@@ -166,12 +166,43 @@ body {
 /* --- map --- */
 
 .map {
-  height: min(52vh, 420px);
+  position: relative;
+  /* Tall enough that a 71-degree pitch leaves sky above the horizon. At the
+     old 420px the dawn sky was a 15px strip along the top edge. */
+  height: min(62vh, 520px);
   width: 100%;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--line);
   background: var(--surface);
+}
+
+/*
+ * Satellite mosaics are shot at local noon in clear air, so raw tiles read
+ * flat and grey against a dawn sky. A light grade puts some depth back
+ * without pretending to be a different time of day.
+ */
+.map canvas {
+  filter: contrast(1.08) saturate(1.06) brightness(1.03);
+}
+
+/*
+ * Vignette. The subject is the centre of the island; the corners are ocean and
+ * map furniture, and darkening them is what stops the frame reading as a
+ * screenshot of a map rather than a view of a place.
+ */
+.map::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      130% 95% at 50% 45%,
+      rgb(0 0 0 / 0) 52%,
+      rgb(3 6 14 / 0.45) 100%
+    );
 }
 
 .map-placeholder {

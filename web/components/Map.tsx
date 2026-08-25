@@ -32,8 +32,13 @@ import { HILLSHADE_LAYER_ID, TERRAIN_EXAGGERATION, buildStyle } from "@/lib/map/
 
 const MAPLIBRE_WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
 
-/** Pitched by default. Flat overhead does not read as terrain. */
-const DEFAULT_PITCH = 60;
+/**
+ * Pitched hard by default, and facing east.
+ *
+ * Flat overhead does not read as terrain, and facing anywhere else puts the
+ * dawn horizon - the one thing the whole site is about - behind the camera.
+ */
+const DEFAULT_PITCH = 71;
 
 /**
  * Past ~72 degrees the camera starts clipping into the terrain it is standing
@@ -44,8 +49,10 @@ const DEFAULT_PITCH = 60;
 const MAX_PITCH = 72;
 const MIN_ZOOM = 8.2;
 const MAX_ZOOM = 15;
-const DEFAULT_BEARING = -25;
-const DEFAULT_ZOOM = 9.6;
+const DEFAULT_BEARING = 72;
+// Close enough that the massif has presence and the dawn sky is in frame.
+// Framed on the whole archipelago the island is a speck on black water.
+const DEFAULT_ZOOM = 10.6;
 
 function markerColor(value: number | null): string {
   if (value === null) return "#94a3b8";
@@ -138,7 +145,7 @@ export default function MapView({
     instance.on("load", () => {
       // The sea goes in first: it must occlude the bathymetry before anything
       // translucent is blended over it.
-      instance.addLayer(new SeaLayer(CENTRE));
+      instance.addLayer(new SeaLayer());
       instance.addLayer(layer);
       layer.setProfile(activeProfile(spots, selectedId));
     });
@@ -237,7 +244,7 @@ export default function MapView({
       center: [spot.lon, spot.lat],
       zoom: viewpoint ? 12.2 : 12.8,
       pitch: viewpoint ? MAX_PITCH - 4 : 40,
-      bearing: viewpoint ? -35 : 0,
+      bearing: viewpoint ? 80 : 0,
       speed: 1.1,
     });
   }, [selectedId, spots]);

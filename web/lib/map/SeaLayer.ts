@@ -21,21 +21,35 @@ import type {
 } from "maplibre-gl";
 
 /**
- * Far wider than the archipelago: this has to meet the horizon, not the edge
- * of the bounds, or its far edge shows up as a straight line in open water.
+ * The plane is rebuilt every frame to just inside the far clipping plane.
+ *
+ * A single huge quad does not work: everything past farZ is clipped away, so
+ * the sea stopped a few tens of kilometres out and the gap between its far
+ * edge and the true horizon filled with sky - which reads as the ocean simply
+ * ending. Sizing it from the frustum means it always reaches the horizon,
+ * whatever the pitch and zoom.
  */
-const SEA_MARGIN_DEG = 12;
+const MAX_EXTENT_MERCATOR = 0.4;
+
+/**
+ * The DEM reads close to zero all along the coast, so the plane and the
+ * imagery draped on the terrain end up coplanar and flicker against each other
+ * as the camera moves. Dropping the plane a little and biasing its depth
+ * settles it: below the shoreline, still above any real bathymetry.
+ */
+const SEA_LEVEL_M = -2;
 
 const VERTEX_SOURCE = `#version 300 es
 in vec2 a_mercator;
 uniform mat4 u_matrix;
 uniform float u_world_size;
 uniform vec2 u_centre;
+uniform float u_sea_level;
 out vec2 v_offset;
 
 void main() {
   // World pixels in x/y and metres in z - see CloudDeckLayer for why.
-  gl_Position = u_matrix * vec4(a_mercator * u_world_size, 0.0, 1.0);
+  gl_Position = u_matrix * vec4(a_mercator * u_world_size, u_sea_level, 1.0);
   v_offset = a_mercator - u_centre;
 }`;
 
@@ -44,6 +58,8 @@ precision highp float;
 in vec2 v_offset;
 uniform vec3 u_near_colour;
 uniform vec3 u_far_colour;
+uniform vec3 u_dawn_colour;
+uniform float u_extent;
 out vec4 fragColor;
 
 void main() {
@@ -51,8 +67,17 @@ void main() {
   // hard band of flat colour.
   // Gentle: a steep ramp turns the far water into a bright sheet that reads as
   // a floating polygon rather than as distance.
-  float distance = clamp(length(v_offset) * 12.0, 0.0, 1.0);
-  fragColor = vec4(mix(u_near_colour, u_far_colour, distance), 1.0);
+  float distance = clamp(length(v_offset) / u_extent, 0.0, 1.0);
+  distance = distance * distance * (3.0 - 2.0 * distance);
+  vec3 water = mix(u_near_colour, u_far_colour, distance);
+
+  // The sun comes up over open water to the east, and at this hour the sea in
+  // that direction is the brightest thing in the frame. Without it the ocean
+  // is a flat dark rectangle and the whole scene reads as a map rather than a
+  // morning.
+  vec2 direction = normalize(v_offset + vec2(1e-6));
+  float sunward = smoothstep(0.1, 1.0, direction.x) * distance;
+  fragColor = vec4(mix(water, u_dawn_colour, sunward * 0.55), 1.0);
 }`;
 
 function compile(
@@ -86,11 +111,14 @@ export class SeaLayer implements CustomLayerInterface {
   private matrixLocation: WebGLUniformLocation | null = null;
   private worldSizeLocation: WebGLUniformLocation | null = null;
   private centreLocation: WebGLUniformLocation | null = null;
+  private seaLevelLocation: WebGLUniformLocation | null = null;
   private nearColourLocation: WebGLUniformLocation | null = null;
   private farColourLocation: WebGLUniformLocation | null = null;
+  private dawnColourLocation: WebGLUniformLocation | null = null;
+  private extentLocation: WebGLUniformLocation | null = null;
   private centre: [number, number] = [0, 0];
-
-  constructor(private centreLngLat: [number, number]) {}
+  private extent = 0;
+  private readonly vertices = new Float32Array(12);
 
   onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
     this.map = map;
@@ -115,34 +143,13 @@ export class SeaLayer implements CustomLayerInterface {
     this.matrixLocation = gl.getUniformLocation(program, "u_matrix");
     this.worldSizeLocation = gl.getUniformLocation(program, "u_world_size");
     this.centreLocation = gl.getUniformLocation(program, "u_centre");
+    this.seaLevelLocation = gl.getUniformLocation(program, "u_sea_level");
     this.nearColourLocation = gl.getUniformLocation(program, "u_near_colour");
     this.farColourLocation = gl.getUniformLocation(program, "u_far_colour");
-
-    const [lng, lat] = this.centreLngLat;
-    const west = lng - SEA_MARGIN_DEG;
-    const east = lng + SEA_MARGIN_DEG;
-    // Mercator y is unbounded near the poles; this stays well inside it.
-    const north = Math.min(80, lat + SEA_MARGIN_DEG);
-    const south = Math.max(-80, lat - SEA_MARGIN_DEG);
-
-    const corners: [number, number][] = [
-      [west, north],
-      [east, north],
-      [east, south],
-      [west, south],
-    ];
-    const vertices: number[] = [];
-    for (const index of [0, 1, 2, 0, 2, 3]) {
-      const point = MercatorCoordinate.fromLngLat(corners[index]);
-      vertices.push(point.x, point.y);
-    }
-
-    const centrePoint = MercatorCoordinate.fromLngLat(this.centreLngLat);
-    this.centre = [centrePoint.x, centrePoint.y];
+    this.dawnColourLocation = gl.getUniformLocation(program, "u_dawn_colour");
+    this.extentLocation = gl.getUniformLocation(program, "u_extent");
 
     this.buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
   }
 
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
@@ -151,6 +158,28 @@ export class SeaLayer implements CustomLayerInterface {
     this.program = null;
     this.buffer = null;
     this.map = null;
+  }
+
+  /** Centre on the camera and reach as far as the frustum allows. */
+  private updateGeometry(gl: WebGL2RenderingContext, farZ: number, worldSize: number): void {
+    const map = this.map;
+    if (!map) return;
+    const centre = MercatorCoordinate.fromLngLat(map.getCenter());
+    // farZ is in the same world pixels as the vertex positions.
+    const extent = Math.min(MAX_EXTENT_MERCATOR, farZ / worldSize);
+    this.centre = [centre.x, centre.y];
+    this.extent = extent;
+
+    const west = centre.x - extent;
+    const east = centre.x + extent;
+    const north = centre.y - extent;
+    const south = centre.y + extent;
+    this.vertices.set([
+      west, north, east, north, east, south,
+      west, north, east, south, west, south,
+    ]);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.vertices, gl.DYNAMIC_DRAW);
   }
 
   render(gl: WebGL2RenderingContext, args: CustomRenderMethodInput): void {
@@ -162,15 +191,19 @@ export class SeaLayer implements CustomLayerInterface {
       false,
       args.modelViewProjectionMatrix as Float32Array
     );
-    gl.uniform1f(
-      this.worldSizeLocation,
-      512 * Math.pow(2, this.map?.getZoom() ?? 0)
-    );
+    const worldSize = 512 * Math.pow(2, this.map?.getZoom() ?? 0);
+    this.updateGeometry(gl, args.farZ, worldSize);
+    gl.uniform1f(this.worldSizeLocation, worldSize);
     gl.uniform2f(this.centreLocation, this.centre[0], this.centre[1]);
-    gl.uniform3f(this.nearColourLocation, 0.031, 0.063, 0.11);
+    gl.uniform1f(this.seaLevelLocation, SEA_LEVEL_M);
+    gl.uniform3f(this.nearColourLocation, 0.04, 0.07, 0.12);
     // Meets the fog colour in style.ts, so the horizon is a transition rather
     // than a seam between two different surfaces.
-    gl.uniform3f(this.farColourLocation, 0.07, 0.1, 0.16);
+    // Light enough to read as water under a lit sky. Too dark and the top
+    // half of the frame is a black slab with an island pasted on it.
+    gl.uniform3f(this.farColourLocation, 0.19, 0.22, 0.29);
+    gl.uniform3f(this.dawnColourLocation, 0.62, 0.42, 0.3);
+    gl.uniform1f(this.extentLocation, this.extent);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
     gl.enableVertexAttribArray(this.mercatorLocation);
@@ -183,9 +216,12 @@ export class SeaLayer implements CustomLayerInterface {
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     gl.disable(gl.CULL_FACE);
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(1.0, 1.0);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
+    gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.enable(gl.BLEND);
   }
 }
