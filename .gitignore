@@ -13,3 +13,7 @@ next-env.d.ts
 dist/
 web/public/conditions.json
 .DS_Store
+
+web/public/maplibre/
+web/test-results/
+web/playwright-report/
