@@ -1,0 +1,165 @@
+# Spot registry for the Madeira conditions engine.
+#
+# elevation_m matters: the inversion model compares the cloud deck altitude
+# against it. Coordinates are to ~100m; verify against an official source
+# before launch, especially the peaks.
+#
+# type drives which scoring rule runs (see ingest/scoring/).
+
+spots:
+  # ---- viewpoints -------------------------------------------------------
+  - id: pico-arieiro
+    type: viewpoint
+    ipma_area: MRM
+    name_pt: Pico do Areeiro
+    name_en: Pico do Arieiro
+    lat: 32.7357
+    lon: -16.9284
+    elevation_m: 1818
+    notes: Road access to summit. The classic sea-of-clouds sunrise spot.
+
+  - id: pico-ruivo
+    type: viewpoint
+    ipma_area: MRM
+    name_pt: Pico Ruivo
+    name_en: Pico Ruivo
+    lat: 32.7583
+    lon: -16.9425
+    elevation_m: 1862
+    notes: Highest point on the island. Reached on foot only.
+
+  - id: eira-do-serrado
+    type: viewpoint
+    ipma_area: MRM
+    name_pt: Eira do Serrado
+    name_en: Eira do Serrado
+    lat: 32.6817
+    lon: -16.9483
+    elevation_m: 1095
+    notes: Overlooks Curral das Freiras. Often below the deck when the peaks are above it.
+
+  - id: fanal
+    type: viewpoint
+    ipma_area: MRM
+    name_pt: Fanal
+    name_en: Fanal Forest
+    lat: 32.8033
+    lon: -17.1450
+    elevation_m: 1150
+    notes: Inverse case - fog is the attraction here, not a spoiler. Scored separately.
+
+  - id: cabo-girao
+    type: viewpoint
+    ipma_area: MCS
+    name_pt: Cabo Girao
+    name_en: Cabo Girao Skywalk
+    lat: 32.6567
+    lon: -16.9950
+    elevation_m: 580
+
+  - id: pico-dos-barcelos
+    type: viewpoint
+    ipma_area: MCS
+    name_pt: Pico dos Barcelos
+    name_en: Pico dos Barcelos
+    lat: 32.6600
+    lon: -16.9350
+    elevation_m: 355
+
+  - id: ponta-do-pargo
+    type: viewpoint
+    ipma_area: MCN
+    name_pt: Miradouro da Ponta do Pargo
+    name_en: Ponta do Pargo Viewpoint
+    lat: 32.8117
+    lon: -17.2617
+    elevation_m: 312
+    notes: West coast. Sunset rather than sunrise.
+
+  - id: pico-do-facho
+    type: viewpoint
+    ipma_area: MPS
+    name_pt: Pico do Facho
+    name_en: Pico do Facho
+    lat: 33.0833
+    lon: -16.3050
+    elevation_m: 517
+    notes: Porto Santo. Highest accessible point on the island.
+
+  # ---- beaches ----------------------------------------------------------
+  - id: porto-santo-beach
+    type: beach
+    ipma_area: MPS
+    swell_sensitivity: 1.0
+    name_pt: Praia de Porto Santo
+    name_en: Porto Santo Beach
+    lat: 33.0567
+    lon: -16.3383
+    elevation_m: 0
+    notes: 9km of golden sand. The main draw of the island.
+
+  - id: praia-formosa
+    type: beach
+    ipma_area: MCS
+    swell_sensitivity: 1.0
+    name_pt: Praia Formosa
+    name_en: Praia Formosa
+    lat: 32.6383
+    lon: -16.9450
+    elevation_m: 0
+    notes: Funchal's main beach. Pebble.
+
+  - id: prainha
+    type: beach
+    ipma_area: MCN
+    swell_sensitivity: 1.2
+    name_pt: Prainha
+    name_en: Prainha
+    lat: 32.7417
+    lon: -16.7050
+    elevation_m: 0
+    notes: Ponta de Sao Lourenco. One of the few natural sand beaches on Madeira.
+
+  - id: porto-moniz
+    type: beach
+    ipma_area: MCN
+    swell_sensitivity: 1.8
+    name_pt: Piscinas Naturais do Porto Moniz
+    name_en: Porto Moniz Natural Pools
+    lat: 32.8667
+    lon: -17.1750
+    elevation_m: 0
+    notes: Volcanic rock pools. Closed to swimmers in heavy swell.
+
+  - id: calheta
+    type: beach
+    ipma_area: MCS
+    swell_sensitivity: 0.8
+    name_pt: Praia da Calheta
+    name_en: Calheta Beach
+    lat: 32.7183
+    lon: -17.1783
+    elevation_m: 0
+    notes: Imported golden sand, sheltered by breakwaters.
+
+  - id: garajau
+    type: beach
+    ipma_area: MCS
+    swell_sensitivity: 1.4
+    name_pt: Reserva Natural do Garajau
+    name_en: Garajau Nature Reserve
+    lat: 32.6383
+    lon: -16.8517
+    elevation_m: 0
+    notes: Marine reserve. Primarily a dive and snorkel site - clarity matters more than sand.
+
+  - id: seixal
+    type: beach
+    ipma_area: MCN
+    swell_sensitivity: 1.3
+    name_pt: Praia do Seixal
+    name_en: Seixal Beach
+    lat: 32.8283
+    lon: -17.1050
+    elevation_m: 0
+    notes: Black sand, north coast. Exposed to north swell.

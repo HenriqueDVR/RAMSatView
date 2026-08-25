@@ -1,0 +1,327 @@
+/* Dark-first, because the primary use is at 04:30 in a car on the way up a
+   mountain. A white screen at that hour is hostile. */
+
+:root {
+  --bg: #0b1220;
+  --surface: #131c2e;
+  --surface-2: #1a2438;
+  --fg: #e8eef8;
+  --muted: #93a3bd;
+  --line: #26324a;
+  --track: #26324a;
+  --good: #22c55e;
+  --mixed: #f59e0b;
+  --poor: #ef4444;
+  --accent: #38bdf8;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f8fc;
+    --surface: #ffffff;
+    --surface-2: #eef2f9;
+    --fg: #0f172a;
+    --muted: #55627a;
+    --muted: #55627a;
+    --line: #dde4ef;
+    --track: #e2e8f0;
+    color-scheme: light;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1rem 4rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* --- masthead --- */
+
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 0 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.masthead p {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+
+.locales {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.locales a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.locales a[aria-current="page"] {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+/* --- status --- */
+
+.statusbar {
+  margin: 1rem 0;
+}
+
+.freshness {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.freshness.stale strong {
+  color: var(--poor);
+}
+
+.official {
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--mixed);
+  background: var(--surface);
+}
+
+.official p {
+  margin: 0.4rem 0;
+}
+
+.official a {
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.warn-yellow {
+  border-left-color: #eab308;
+}
+.warn-orange {
+  border-left-color: #f97316;
+}
+.warn-red {
+  border-left-color: var(--poor);
+}
+
+/* --- tabs --- */
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.tab {
+  flex: 0 0 auto;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.tab.active {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+/* --- map --- */
+
+.map {
+  height: min(52vh, 420px);
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.map-placeholder {
+  display: grid;
+  place-items: center;
+}
+
+.map-pin {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  color: #fff;
+  font: 600 13px/1 system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
+}
+
+.map-pin.selected {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- cards --- */
+
+.cards {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  cursor: pointer;
+}
+
+.card.selected {
+  border-color: var(--accent);
+}
+
+.card header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.card header span {
+  font-size: 0.8rem;
+}
+
+.dials {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+}
+
+.dial {
+  margin: 0;
+  text-align: center;
+}
+
+.dial figcaption {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.dial-value {
+  font: 700 26px/1 system-ui, sans-serif;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.fact dt {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fact dd {
+  margin: 0.1rem 0 0;
+  font-weight: 600;
+}
+
+.reasons {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.card-warning {
+  margin: 0.5rem 0 0;
+  color: var(--poor);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* --- footer --- */
+
+.state {
+  padding: 2rem 0;
+  color: var(--muted);
+}
+
+.attribution {
+  margin-top: 2rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.disclaimer {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.disclaimer strong {
+  color: var(--fg);
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+@media (max-width: 480px) {
+  .dials {
+    justify-content: space-around;
+  }
+}

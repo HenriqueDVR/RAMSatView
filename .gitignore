@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+dist/
+web/public/conditions.json
+.DS_Store
