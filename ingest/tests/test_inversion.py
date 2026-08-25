@@ -27,6 +27,7 @@ from ingest.scoring.inversion import (
     score_hour,
     score_sunrise,
     temperature_at,
+    vertical_profile,
     vertical_confidence,
 )
 from ingest.sources.base import AtmosphereForecast, AtmosphereHour, LevelSample
@@ -92,6 +93,32 @@ def test_cloud_at_clamps_outside_profile_rather_than_extrapolating():
 
 def test_cloud_at_empty_profile_is_zero():
     assert cloud_at((), 1500) == 0.0
+
+
+def test_vertical_profile_samples_on_a_regular_grid():
+    levels = make_levels((0, 0.0, 20.0), (1000, 1.0, 14.0), (2000, 0.0, 8.0))
+    profile = vertical_profile(levels, step_m=500)
+    assert [point[0] for point in profile] == [0, 500, 1000, 1500, 2000]
+    assert profile[2] == (1000, 1.0)
+    assert profile[1][1] == pytest.approx(0.5)
+
+
+def test_vertical_profile_stops_at_the_ceiling():
+    levels = make_levels((0, 0.2, 20.0), (6000, 0.2, -10.0))
+    profile = vertical_profile(levels, step_m=1000, ceiling_m=3000)
+    assert profile[-1][0] == 3000
+
+
+def test_vertical_profile_of_empty_levels_is_empty():
+    assert vertical_profile(()) == ()
+
+
+def test_vertical_profile_reaches_the_web_app_through_the_outlook(real_forecasts):
+    spots, forecasts = real_forecasts
+    outlook = score_sunrise(spots["pico-arieiro"], forecasts["pico-arieiro"], 0)
+    assert outlook is not None
+    assert len(outlook.profile) > 10
+    assert outlook.profile[0][0] == 0
 
 
 def test_temperature_at_interpolates_to_summit_height():

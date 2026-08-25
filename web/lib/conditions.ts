@@ -6,13 +6,20 @@
  * rather than letting the UI render undefined values as blanks.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type Score = {
   value: number;
   confidence: number;
   reasons: string[];
 };
+
+/**
+ * Cloud fraction (0..1) at an altitude in metres, as [altitude, fraction].
+ * Sampled every 100m from sea level; this is what the 3D deck and the
+ * cross-section chart are drawn from.
+ */
+export type ProfilePoint = [number, number];
 
 export type ViewpointDay = {
   date: string;
@@ -25,6 +32,7 @@ export type ViewpointDay = {
   temperature_c: number;
   wind_kmh: number;
   precipitation_mm: number;
+  profile: ProfilePoint[];
 };
 
 export type BeachDay = {

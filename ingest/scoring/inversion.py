@@ -34,6 +34,8 @@ SUMMIT_MARGIN_M = 150  # dead zone above/below the peak (model cannot resolve fi
 DECK_SEARCH_FLOOR_M = 200  # ignore anything below this when hunting for a deck
 BLOCKING_CEILING_M = 2500  # cloud this far above the peak still blocks the sun
 PROFILE_STEP_M = 50  # vertical sampling resolution for the interpolated profile
+PROFILE_EMIT_STEP_M = 100  # coarser step for the profile we publish to the web app
+PROFILE_EMIT_CEILING_M = 3000  # above this there is nothing the deck view needs
 INVERSION_BAND_M = (600, 2600)  # where the trade-wind inversion lives
 STRONG_WIND_KMH = 50.0  # above this it is unpleasant regardless of the view
 SUNRISE_WINDOW_H = 1  # evaluate this many hours either side of sunrise
@@ -59,6 +61,9 @@ class SunriseOutlook:
     temperature_c: float
     wind_kmh: float
     precipitation_mm: float
+    # Cloud fraction by altitude at the pivot hour, for the 3D deck and the
+    # cross-section chart. The score is a summary of this; the picture is not.
+    profile: tuple[tuple[int, float], ...]
 
 
 # --- profile helpers ------------------------------------------------------
@@ -85,6 +90,27 @@ def cloud_at(levels: tuple[LevelSample, ...], altitude_m: float) -> float:
         return upper.cloud_cover
     weight = (altitude_m - lower.height_m) / span
     return lower.cloud_cover + weight * (upper.cloud_cover - lower.cloud_cover)
+
+
+def vertical_profile(
+    levels: tuple[LevelSample, ...],
+    step_m: int = PROFILE_EMIT_STEP_M,
+    ceiling_m: int = PROFILE_EMIT_CEILING_M,
+) -> tuple[tuple[int, float], ...]:
+    """Cloud fraction sampled every step_m, for rendering rather than scoring.
+
+    Pressure levels are unevenly spaced and go far higher than anything a
+    viewer cares about, so this resamples onto a regular grid and stops at
+    ceiling_m. Values are rounded hard - the published document carries one of
+    these per viewpoint per day and precision beyond 1% is invented anyway.
+    """
+    if not levels:
+        return ()
+    top = int(min(ceiling_m, levels[-1].height_m))
+    return tuple(
+        (altitude, round(cloud_at(levels, altitude), 2))
+        for altitude in range(0, top + 1, step_m)
+    )
 
 
 def temperature_at(levels: tuple[LevelSample, ...], altitude_m: float) -> float:
@@ -370,4 +396,5 @@ def score_sunrise(
         ),
         wind_kmh=round(sum(h.wind_speed_10m_kmh for h in hours) / count, 1),
         precipitation_mm=round(sum(h.precipitation_mm for h in hours), 1),
+        profile=vertical_profile(pivot_hour.levels),
     )

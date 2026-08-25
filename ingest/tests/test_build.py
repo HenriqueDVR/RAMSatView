@@ -146,6 +146,57 @@ def test_validate_rejects_a_document_that_is_born_stale(offline_document):
         validate(stale, spots)
 
 
+def test_viewpoint_days_carry_a_vertical_profile(offline_document):
+    document, _ = offline_document
+    for entry in (e for e in document["spots"] if e["type"] == "viewpoint"):
+        for day in entry["days"]:
+            profile = day["profile"]
+            assert profile, f"{entry['id']} {day['date']} has no profile"
+            heights = [height for height, _ in profile]
+            assert heights == sorted(heights)
+            assert all(0.0 <= cover <= 1.0 for _, cover in profile)
+
+
+def test_beach_days_carry_no_profile(offline_document):
+    """Beaches have no vertical story to tell; the field would be dead weight."""
+    document, _ = offline_document
+    for entry in (e for e in document["spots"] if e["type"] == "beach"):
+        assert all("profile" not in day for day in entry["days"])
+
+
+def test_document_stays_within_the_size_budget(offline_document):
+    """It is fetched over mobile data on a mountain road. 35KB is the ceiling."""
+    document, _ = offline_document
+    assert len(json.dumps(document, ensure_ascii=False)) < 35_000
+
+
+def test_validate_rejects_an_empty_profile(offline_document):
+    document, spots = offline_document
+    entries = json.loads(json.dumps(document["spots"]))
+    entry = next(e for e in entries if e["type"] == "viewpoint")
+    entry["days"][0]["profile"] = []
+    with pytest.raises(ValidationError, match="empty vertical profile"):
+        validate({**document, "spots": entries}, spots)
+
+
+def test_validate_rejects_an_unsorted_profile(offline_document):
+    document, spots = offline_document
+    entries = json.loads(json.dumps(document["spots"]))
+    entry = next(e for e in entries if e["type"] == "viewpoint")
+    entry["days"][0]["profile"] = list(reversed(entry["days"][0]["profile"]))
+    with pytest.raises(ValidationError, match="not sorted"):
+        validate({**document, "spots": entries}, spots)
+
+
+def test_validate_rejects_an_out_of_range_cloud_fraction(offline_document):
+    document, spots = offline_document
+    entries = json.loads(json.dumps(document["spots"]))
+    entry = next(e for e in entries if e["type"] == "viewpoint")
+    entry["days"][0]["profile"][2][1] = 4.2
+    with pytest.raises(ValidationError, match="cloud fraction out of range"):
+        validate({**document, "spots": entries}, spots)
+
+
 def test_validate_rejects_a_schema_version_mismatch(offline_document):
     document, spots = offline_document
     with pytest.raises(ValidationError, match="schema_version"):

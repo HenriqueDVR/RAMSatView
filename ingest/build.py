@@ -29,7 +29,7 @@ from ingest.sources.openmeteo import OpenMeteoAtmosphere
 from ingest.sources.openmeteo_marine import OpenMeteoMarine
 from ingest.spots import REPO_ROOT, Spot, by_type, load_spots
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 FORECAST_HOURS = 72
 FORECAST_DAYS = 3
 
@@ -90,6 +90,10 @@ def build_viewpoint(spot: Spot, forecast: AtmosphereForecast) -> dict:
                 "temperature_c": outlook.temperature_c,
                 "wind_kmh": outlook.wind_kmh,
                 "precipitation_mm": outlook.precipitation_mm,
+                # [altitude_m, cloud_fraction] pairs rather than named keys:
+                # the field repeats ~30 times per day per viewpoint and the
+                # document is fetched over mobile data on a mountain road.
+                "profile": [[height, cover] for height, cover in outlook.profile],
             }
         )
     return {"days": days}
@@ -184,6 +188,28 @@ class ValidationError(Exception):
     """Raised when the assembled document is not safe to publish."""
 
 
+def _validate_profile(spot_id: str, day: dict) -> None:
+    """The vertical profile is what the 3D deck is drawn from.
+
+    An empty or unordered profile does not degrade the picture, it draws a
+    wrong one - a deck at the wrong altitude looks exactly as authoritative as
+    a right one. Same fail-closed rule as the scores.
+    """
+    profile = day.get("profile") or []
+    if not profile:
+        raise ValidationError(f"{spot_id} {day['date']}: empty vertical profile")
+    heights = [point[0] for point in profile]
+    if heights != sorted(heights) or len(set(heights)) != len(heights):
+        raise ValidationError(
+            f"{spot_id} {day['date']}: vertical profile not sorted by altitude"
+        )
+    for height, cover in profile:
+        if not 0.0 <= cover <= 1.0:
+            raise ValidationError(
+                f"{spot_id} {day['date']}: cloud fraction out of range at {height}m"
+            )
+
+
 def validate(document: dict, spots: list[Spot]) -> None:
     if document.get("schema_version") != SCHEMA_VERSION:
         raise ValidationError("schema_version mismatch")
@@ -198,6 +224,8 @@ def validate(document: dict, spots: list[Spot]) -> None:
         if not days:
             raise ValidationError(f"{entry['id']}: no forecast days")
         for day in days:
+            if entry["type"] == "viewpoint":
+                _validate_profile(entry["id"], day)
             scores = (
                 [day["visibility"], day["cloud_sea"]]
                 if entry["type"] == "viewpoint"
