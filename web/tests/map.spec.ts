@@ -131,6 +131,21 @@ test("a deck above the summit swallows it", async ({ page }, testInfo) => {
   expect(shot.byteLength).toBeGreaterThan(20_000);
 });
 
+test("DEM tiles are filtered rather than falling back to raw", async ({
+  page,
+}) => {
+  await page.goto("/en");
+  await waitForMap(page);
+  const stats = await page.evaluate(
+    () => (window as unknown as { __demStats?: Record<string, unknown> }).__demStats
+  );
+  // The raw fallback is silent on purpose. A regression that sends every tile
+  // down it puts the DEM spikes back and looks like nothing at all.
+  expect(stats).toBeTruthy();
+  expect(stats!.cleaned as number).toBeGreaterThan(0);
+  expect(stats!.raw as number).toBe(0);
+});
+
 test("the page does not scroll sideways", async ({ page }) => {
   await page.goto("/en");
   await waitForMap(page);

@@ -39,9 +39,11 @@ export function buildStyle(licence?: ImageryLicence): StyleSpecification {
       // about to arrive.
       "sky-color": "#0b1a33",
       "horizon-color": "#f0a868",
-      "fog-color": "#c8d4e3",
-      "fog-ground-blend": 0.45,
-      "horizon-fog-blend": 0.7,
+      // Was a pale grey, which rendered as a white band along the whole
+      // horizon where the terrain mesh ends. Dark and cool reads as distance.
+      "fog-color": "#1b2740",
+      "fog-ground-blend": 0.6,
+      "horizon-fog-blend": 0.5,
     },
     light: { anchor: "map", position: [1.5, 200, 30], intensity: 0.3 },
     layers: [

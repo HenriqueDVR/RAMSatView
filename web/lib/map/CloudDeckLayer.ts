@@ -108,9 +108,17 @@ float fbm(vec2 p) {
 void main() {
   // Mercator units span 0..1 across the whole world, so Madeira occupies about
   // 0.004 of it. Scaling up is what turns that into cloud-sized features.
-  // ~1.5km features: stratocumulus cells, not continents.
-  vec2 p = v_world * 26000.0 + vec2(u_time * 0.00015, u_time * 0.00009);
+  // ~4km cells. Finer than this and the pattern is smaller than a few pixels
+  // when the whole island is in frame, where five stacked slabs at different
+  // parallax turn it into crawling static rather than cloud.
+  vec2 p = v_world * 9000.0 + vec2(u_time * 0.00006, u_time * 0.00004);
   float n = fbm(p);
+
+  // Zoomed out, one noise cell covers less than a pixel and the deck turns
+  // into crawling static. Where the pattern can no longer be resolved, fade it
+  // towards its own mean so the deck reads as smooth overcast instead.
+  float footprint = fwidth(p.x) + fwidth(p.y);
+  n = mix(n, 0.45, smoothstep(0.25, 0.9, footprint));
   // The deck is a local weather feature, not a global one. Without this fade
   // the quads run to the horizon and, seen almost edge-on from a summit, turn
   // the whole frame to milk. It must be computed per fragment: the quad's four

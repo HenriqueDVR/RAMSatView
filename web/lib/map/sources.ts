@@ -21,6 +21,7 @@ import type {
   RasterDEMSourceSpecification,
   RasterSourceSpecification,
 } from "maplibre-gl";
+import { CLEAN_DEM_PROTOCOL } from "./demProtocol";
 
 export type ImageryLicence = "non-commercial" | "commercial";
 
@@ -81,11 +82,11 @@ export function demSource(): RasterDEMSourceSpecification {
   return {
     type: "raster-dem",
     tiles: [
-      "https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png",
+      `${CLEAN_DEM_PROTOCOL}://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png`,
     ],
     encoding: "terrarium",
     tileSize: 256,
-    maxzoom: 15,
+    maxzoom: 14,
     attribution: TERRAIN_ATTRIBUTION,
   };
 }

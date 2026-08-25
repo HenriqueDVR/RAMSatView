@@ -16,6 +16,8 @@ import {
 } from "@/lib/conditions";
 import type { Locale } from "@/lib/i18n";
 import { CloudDeckLayer } from "@/lib/map/CloudDeckLayer";
+import { SEA_LAYER_ID, SeaLayer } from "@/lib/map/SeaLayer";
+import { registerCleanDemProtocol } from "@/lib/map/demProtocol";
 import { BOUNDS, CENTRE, DEM_SOURCE_ID } from "@/lib/map/sources";
 import { HILLSHADE_LAYER_ID, TERRAIN_EXAGGERATION, buildStyle } from "@/lib/map/style";
 
@@ -32,6 +34,16 @@ const MAPLIBRE_WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
 
 /** Pitched by default. Flat overhead does not read as terrain. */
 const DEFAULT_PITCH = 60;
+
+/**
+ * Past ~72 degrees the camera starts clipping into the terrain it is standing
+ * on, and MapLibre has no collision handling for that: the ground folds up
+ * over the view. Below zoom 8.2 the archipelago is a speck; above 15 both the
+ * imagery (10m/px) and the DEM run out and the terrain turns to smooth dunes.
+ */
+const MAX_PITCH = 72;
+const MIN_ZOOM = 8.2;
+const MAX_ZOOM = 15;
 const DEFAULT_BEARING = -25;
 const DEFAULT_ZOOM = 9.6;
 
@@ -92,6 +104,7 @@ export default function MapView({
     // Copied into public/ by scripts/copy-maplibre-worker.mjs. Without this
     // the worker URL webpack baked in points at the build machine's disk.
     setWorkerUrl(MAPLIBRE_WORKER_URL);
+    registerCleanDemProtocol();
 
     const instance = new MapLibreMap({
       container: container.current,
@@ -100,7 +113,9 @@ export default function MapView({
       zoom: DEFAULT_ZOOM,
       pitch: DEFAULT_PITCH,
       bearing: DEFAULT_BEARING,
-      maxPitch: 80,
+      maxPitch: MAX_PITCH,
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM,
       maxBounds: [
         [BOUNDS[0], BOUNDS[1]],
         [BOUNDS[2], BOUNDS[3]],
@@ -121,6 +136,9 @@ export default function MapView({
     deck.current = layer;
 
     instance.on("load", () => {
+      // The sea goes in first: it must occlude the bathymetry before anything
+      // translucent is blended over it.
+      instance.addLayer(new SeaLayer(CENTRE));
       instance.addLayer(layer);
       layer.setProfile(activeProfile(spots, selectedId));
     });
@@ -137,6 +155,10 @@ export default function MapView({
       if (instance.getLayer(HILLSHADE_LAYER_ID)) {
         instance.removeLayer(HILLSHADE_LAYER_ID);
       }
+      // Without terrain the raster layers are drawn flat at zero, which is
+      // exactly where the sea plane sits - and being a depth-writing 3D layer
+      // it would win, leaving the user staring at an empty blue rectangle.
+      if (instance.getLayer(SEA_LAYER_ID)) instance.removeLayer(SEA_LAYER_ID);
       instance.easeTo({ pitch: 0 });
     };
     instance.on("error", onError);
@@ -214,7 +236,7 @@ export default function MapView({
     instance.flyTo({
       center: [spot.lon, spot.lat],
       zoom: viewpoint ? 12.2 : 12.8,
-      pitch: viewpoint ? 70 : 40,
+      pitch: viewpoint ? MAX_PITCH - 4 : 40,
       bearing: viewpoint ? -35 : 0,
       speed: 1.1,
     });
