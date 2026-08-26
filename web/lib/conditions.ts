@@ -7,6 +7,7 @@
  */
 
 import type { CloudGridHeader } from "@/lib/cloudGrid";
+import { withBase } from "@/lib/basePath";
 
 export const SCHEMA_VERSION = 2;
 
@@ -95,7 +96,7 @@ const CACHE_KEY = "conditions:last-good";
 
 /** Where the hourly job publishes. Overridden per environment. */
 export function conditionsUrl(): string {
-  return process.env.NEXT_PUBLIC_CONDITIONS_URL || "/conditions.json";
+  return process.env.NEXT_PUBLIC_CONDITIONS_URL || withBase("/conditions.json");
 }
 
 export function isStale(conditions: Conditions, now = new Date()): boolean {

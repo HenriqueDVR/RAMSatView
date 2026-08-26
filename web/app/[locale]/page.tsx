@@ -1,3 +1,4 @@
+import { withBase } from "@/lib/basePath";
 import ConditionsView from "./ConditionsView";
 import { LOCALES, translate, type Locale } from "@/lib/i18n";
 
@@ -23,7 +24,7 @@ export default async function Page({
           {LOCALES.map((code) => (
             <a
               key={code}
-              href={`/${code}/`}
+              href={withBase(`/${code}/`)}
               aria-current={code === locale ? "page" : undefined}
             >
               {code.toUpperCase()}

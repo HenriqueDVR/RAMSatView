@@ -1,0 +1,88 @@
+name: pages
+
+# Hourly: fetch the forecast, build the site around it, publish to GitHub Pages.
+#
+# Fail-closed by design. If the ingest or the build fails, the job exits
+# non-zero and nothing is deployed, so the previously published site stays up.
+# A stale site that badges itself as stale is strictly better than a
+# fresh-looking one built from partial data - people drive up a mountain at 4am
+# on the strength of these numbers.
+
+on:
+  schedule:
+    # Every hour at :10, past the top of the hour so upstream model runs have
+    # landed. UTC - Madeira is UTC+0 in winter, UTC+1 in summer.
+    - cron: "10 * * * *"
+  workflow_dispatch: {}
+  push:
+    branches: [master]
+
+concurrency:
+  # Never let two runs race to publish. Do not cancel in progress: a half-done
+  # deployment is the one state we cannot recover from.
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the ingest tests
+        # Offline only - the suite must never depend on a live upstream API,
+        # or an Open-Meteo outage silently becomes a red build.
+        run: python -m pytest -q
+
+      - name: Fetch the forecast
+        # Lands conditions.json and cloud-grid.bin in web/public, which Next
+        # copies verbatim into the export. The data ships inside the site
+        # rather than beside it, so there is one artifact and no second host.
+        run: python -m ingest.build --out web/public/conditions.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build the site
+        # A project site is served from /<repo>/, and every absolute URL in the
+        # bundle has to carry that prefix or the page loads to a blank screen.
+        env:
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+        run: npm run build
+        working-directory: web
+
+      - name: Report output size
+        run: |
+          ls -lh web/out/conditions.json web/out/cloud-grid.bin
+          du -sh web/out
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/out
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

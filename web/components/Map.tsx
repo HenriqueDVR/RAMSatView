@@ -16,6 +16,7 @@ import {
   type SpotEntry,
 } from "@/lib/conditions";
 import type { Locale } from "@/lib/i18n";
+import { withBase } from "@/lib/basePath";
 import { CloudDeckLayer, fieldFrame } from "@/lib/map/CloudDeckLayer";
 import {
   envelopeProfile,
@@ -46,7 +47,7 @@ import { DEFAULT_LAYERS, type LayerState } from "@/lib/layers";
  * reasoned about without a component around it.
  */
 
-const MAPLIBRE_WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
+const MAPLIBRE_WORKER_URL = withBase("/maplibre/maplibre-gl-worker.mjs");
 
 /**
  * Pitched hard by default, and facing east.
