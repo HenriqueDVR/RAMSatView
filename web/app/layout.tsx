@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
-import "./globals.css";
+// MapLibre first, ours second: both stylesheets style .maplibregl-ctrl-* with
+// single-class selectors, so the later import wins every tie. Loading theirs
+// last is what made the zoom control keep its white pill no matter what
+// globals.css said about it.
 import "maplibre-gl/dist/maplibre-gl.css";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Madeira Conditions",

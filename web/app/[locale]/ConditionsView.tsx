@@ -1,16 +1,27 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import LayerPanel from "@/components/LayerPanel";
+import TimeScrubber from "@/components/TimeScrubber";
 import SpotCard from "@/components/SpotCard";
 import StatusBar from "@/components/StatusBar";
 import {
+  conditionsUrl,
   headlineScore,
+  isViewpointDay,
   loadConditions,
   type Conditions,
   type SpotEntry,
 } from "@/lib/conditions";
+import {
+  loadCloudGrid,
+  timeIndexFor,
+  type CloudGrid,
+} from "@/lib/cloudGrid";
+import { nearestIndex } from "@/lib/timeline";
 import { translator, type Locale } from "@/lib/i18n";
+import { DEFAULT_LAYERS, type LayerKey, type LayerState } from "@/lib/layers";
 
 // MapLibre touches window at import time and is by far the heaviest dependency
 // on the page (~200KB gzipped), so it is client-only and lazily loaded. The
@@ -22,6 +33,25 @@ const MapView = dynamic(() => import("@/components/Map"), {
 
 type Tab = "viewpoint" | "beach";
 
+/**
+ * The next sunrise the forecast covers, which is where the scrubber starts.
+ *
+ * The *next* one, not the first in the document: opening the page at nine in
+ * the evening should show tomorrow morning, not this morning, which has
+ * already happened and which nobody is deciding anything about. Falls back to
+ * the earliest sunrise on file when the whole forecast is in the past, so the
+ * control still lands somewhere meaningful rather than on hour zero.
+ */
+function nextSunrise(spots: SpotEntry[], now = new Date()): Date {
+  const sunrises = spots
+    .flatMap((spot) => spot.days)
+    .filter(isViewpointDay)
+    .map((day) => new Date(day.sunrise_utc))
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (!sunrises.length) return now;
+  return sunrises.find((time) => time.getTime() >= now.getTime()) ?? sunrises[0];
+}
+
 export default function ConditionsView({ locale }: { locale: Locale }) {
   const t = useMemo(() => translator(locale), [locale]);
   const [conditions, setConditions] = useState<Conditions | null>(null);
@@ -29,6 +59,16 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("viewpoint");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [layers, setLayers] = useState<LayerState>(DEFAULT_LAYERS);
+  const [grid, setGrid] = useState<CloudGrid | null>(null);
+  // Null until the volume arrives, then the sunrise the forecast is about -
+  // not "now". Held as an index rather than a Date so the slider, the shader
+  // and the lighting cannot drift a minute apart from each other.
+  const [hour, setHour] = useState<number | null>(null);
+
+  const setLayer = useCallback((key: LayerKey, value: boolean) => {
+    setLayers((current) => ({ ...current, [key]: value }));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +85,34 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
       cancelled = true;
     };
   }, []);
+
+  // The volume is a quarter of a megabyte and the page is fully usable
+  // without it, so it is fetched after the document rather than with it, and a
+  // failure only costs the shaped cloud.
+  useEffect(() => {
+    const header = conditions?.cloud_grid;
+    if (!header) return;
+    let cancelled = false;
+    loadCloudGrid(header, conditionsUrl())
+      .then((loaded) => {
+        if (cancelled) return;
+        setGrid(loaded);
+        setHour(timeIndexFor(loaded, nextSunrise(conditions.spots)));
+      })
+      .catch(() => {
+        // Deliberately silent: the deck falls back to the per-spot profile and
+        // the user has lost nothing they can name.
+        if (!cancelled) setGrid(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conditions]);
+
+  const times = useMemo(
+    () => grid?.timesMs.map((ms) => new Date(ms)) ?? [],
+    [grid]
+  );
 
   const visible: SpotEntry[] = useMemo(() => {
     if (!conditions) return [];
@@ -96,12 +164,45 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
         ))}
       </nav>
 
-      <MapView
-        spots={visible}
-        locale={locale}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-      />
+      {/*
+        Outside the stage, not inside it. The stage is a fixed, full-viewport
+        element on desktop, so anything within it is trapped under the cards
+        that scroll over the map - and pinning the panel at a fixed offset
+        instead put it under whatever the status bar happens to be showing
+        that morning. In the flow, under the tabs, it lands below them however
+        tall they are.
+      */}
+      <LayerPanel layers={layers} onChange={setLayer} t={t} />
+
+      <div className="stage">
+        <MapView
+          spots={visible}
+          locale={locale}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          layers={layers}
+          grid={grid}
+          timeIndex={hour ?? 0}
+          time={hour === null ? undefined : times[hour]}
+        />
+      </div>
+
+      {/*
+        Outside the stage for the same reason the layer panel is: on desktop
+        the stage is a fixed element with its own stacking context, and a
+        control inside it stops taking clicks the moment the cards scroll up
+        over the map.
+      */}
+      {hour !== null && (
+        <TimeScrubber
+          times={times}
+          index={hour}
+          onChange={setHour}
+          locale={locale}
+          t={t}
+          sunriseIndex={nearestIndex(times, nextSunrise(conditions.spots))}
+        />
+      )}
 
       <section className="cards">
         {visible.map((spot) => (

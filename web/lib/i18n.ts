@@ -56,6 +56,15 @@ const DICTIONARY = {
     "disclaimer.body":
       "Estes numeros descrevem condicoes previstas, nao sao uma recomendacao de seguranca. Para trilhos e avisos oficiais consulte sempre o IPMA e o IFCN antes de sair.",
     "footer.data": "Dados",
+    "layers.title": "Camadas",
+    "layers.satellite": "Satelite",
+    "layers.terrain": "Relevo 3D",
+    "layers.sea": "Mar",
+    "layers.cloud": "Nuvem",
+    "layers.show": "Mostrar camadas",
+    "time.now": "Agora",
+    "time.scrub": "Hora mostrada",
+    "time.sunrise": "Nascer do sol",
   },
   en: {
     "site.title": "Madeira Conditions",
@@ -92,6 +101,15 @@ const DICTIONARY = {
     "disclaimer.body":
       "These numbers describe forecast conditions and are not a safety recommendation. For trails and official warnings, always check IPMA and IFCN before you set out.",
     "footer.data": "Data",
+    "layers.title": "Layers",
+    "layers.satellite": "Satellite",
+    "layers.terrain": "3D terrain",
+    "layers.sea": "Sea",
+    "layers.cloud": "Cloud",
+    "layers.show": "Show layers",
+    "time.now": "Now",
+    "time.scrub": "Hour shown",
+    "time.sunrise": "Sunrise",
   },
 } as const;
 
@@ -110,7 +128,13 @@ export function translate(
   );
 }
 
-export function translator(locale: Locale) {
+/** The bound translate function components take as a prop. */
+export type Translate = (
+  key: TranslationKey,
+  vars?: Record<string, string | number>
+) => string;
+
+export function translator(locale: Locale): Translate {
   return (key: TranslationKey, vars?: Record<string, string | number>) =>
     translate(locale, key, vars);
 }

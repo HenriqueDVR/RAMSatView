@@ -136,14 +136,21 @@ test("DEM tiles are filtered rather than falling back to raw", async ({
 }) => {
   await page.goto("/en");
   await waitForMap(page);
-  const stats = await page.evaluate(
-    () => (window as unknown as { __demStats?: Record<string, unknown> }).__demStats
-  );
+  // Polled, not sampled once: decoding, despiking and re-encoding a tile goes
+  // through OffscreenCanvas, which under SwiftShader takes seconds per tile -
+  // long enough that a fixed wait caught every tile still in flight and read
+  // zero cleaned tiles from a filter that was working perfectly.
+  const stats = async () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __demStats?: Record<string, number> }).__demStats
+    );
   // The raw fallback is silent on purpose. A regression that sends every tile
   // down it puts the DEM spikes back and looks like nothing at all.
-  expect(stats).toBeTruthy();
-  expect(stats!.cleaned as number).toBeGreaterThan(0);
-  expect(stats!.raw as number).toBe(0);
+  await expect.poll(async () => (await stats())?.cleaned ?? 0, {
+    timeout: 60_000,
+  }).toBeGreaterThan(0);
+  expect((await stats())!.raw).toBe(0);
 });
 
 test("the page does not scroll sideways", async ({ page }) => {

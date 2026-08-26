@@ -102,7 +102,7 @@ test("map at the default camera draws and logs nothing", async ({ page }, testIn
   // The pitched opening shot is the whole reason the terrain reads as terrain
   // on first paint. A camera reset to flat overhead is a real regression and
   // is invisible in every other assertion here.
-  expect(camera).toEqual({ zoom: 10.6, pitch: 71, bearing: 72, terrain: true });
+  expect(camera).toEqual({ zoom: 10.6, pitch: 70, bearing: 72, terrain: true });
 
   const shot = await page.locator(".map canvas").first().screenshot();
   await testInfo.attach(`${testInfo.project.name}-map-default.png`, {

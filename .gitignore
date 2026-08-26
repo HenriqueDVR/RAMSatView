@@ -12,6 +12,7 @@ next-env.d.ts
 
 dist/
 web/public/conditions.json
+web/public/cloud-grid.bin
 .DS_Store
 
 web/public/maplibre/

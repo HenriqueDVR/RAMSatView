@@ -16,10 +16,12 @@ from ingest.build import (
     FORECAST_DAYS,
     SCHEMA_VERSION,
     ValidationError,
+    _load_offline,
     assemble,
     run,
     validate,
 )
+from ingest.sources.openmeteo_grid import GridSpec, OpenMeteoCloudGrid
 from ingest.sources.openmeteo import OpenMeteoAtmosphere
 from ingest.sources.openmeteo_marine import OpenMeteoMarine
 from ingest.spots import by_type, load_spots
@@ -224,3 +226,65 @@ def test_marine_parse_rejects_a_location_count_mismatch():
     )
     with pytest.raises(ValueError, match="locations"):
         OpenMeteoMarine.parse(spots, payload[:-1])
+
+
+# --- the gridded cloud volume ---------------------------------------------
+
+
+def _document_with_grid(spots, grid):
+    atmosphere, marine, status = _load_offline(spots)
+    return assemble(spots, atmosphere, marine, status, [], grid)
+
+
+def _small_grid():
+    """A two-hour, four-cell volume on the real altitude ladder."""
+    source = OpenMeteoCloudGrid(
+        GridSpec(west=-17.0, south=32.5, east=-16.5, north=33.0, cols=2, rows=2),
+        session=object(),
+    )
+    hourly = {"time": [1756166400, 1756170000]}
+    for level, height in ((1000, 100.0), (900, 1000.0), (700, 3000.0)):
+        hourly[f"geopotential_height_{level}hPa"] = [height, height]
+        hourly[f"cloud_cover_{level}hPa"] = [50.0, 50.0]
+    return source.parse([{"hourly": dict(hourly)} for _ in range(4)])
+
+
+def test_offline_build_publishes_without_a_grid(offline_document):
+    # No network, no volume. The map falls back rather than the run failing.
+    document, _ = offline_document
+    assert document["cloud_grid"] is None
+
+
+def test_grid_header_travels_with_the_document():
+    spots = load_spots()
+    grid = _small_grid()
+    document = _document_with_grid(spots, grid)
+    meta = document["cloud_grid"]
+
+    assert meta["bytes"] == len(grid.values)
+    assert meta["generated_at"] == document["generated_at"]
+    validate(document, spots, len(grid.values))
+
+
+def test_validate_rejects_a_blob_of_the_wrong_length():
+    spots = load_spots()
+    grid = _small_grid()
+    document = _document_with_grid(spots, grid)
+    with pytest.raises(ValidationError, match="blob is"):
+        validate(document, spots, len(grid.values) - 1)
+
+
+def test_validate_rejects_a_header_that_contradicts_itself():
+    spots = load_spots()
+    document = _document_with_grid(spots, _small_grid())
+    document["cloud_grid"]["cols"] += 1
+    with pytest.raises(ValidationError, match="byte volume"):
+        validate(document, spots)
+
+
+def test_validate_rejects_a_grid_from_another_run():
+    spots = load_spots()
+    document = _document_with_grid(spots, _small_grid())
+    document["cloud_grid"]["generated_at"] = "2020-01-01T00:00:00Z"
+    with pytest.raises(ValidationError, match="generated apart"):
+        validate(document, spots)

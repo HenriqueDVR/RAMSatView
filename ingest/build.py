@@ -26,12 +26,23 @@ from ingest.scoring.inversion import score_sunrise
 from ingest.sources.base import AtmosphereForecast, OfficialStatus
 from ingest.sources.ipma import IPMA, active_warnings
 from ingest.sources.openmeteo import OpenMeteoAtmosphere
+from ingest.sources.openmeteo_grid import (
+    ALTITUDES,
+    CloudGrid,
+    OpenMeteoCloudGrid,
+)
+from ingest.sources.openmeteo_grid import header as grid_header
 from ingest.sources.openmeteo_marine import OpenMeteoMarine
 from ingest.spots import REPO_ROOT, Spot, by_type, load_spots
 
 SCHEMA_VERSION = 2
 FORECAST_HOURS = 72
 FORECAST_DAYS = 3
+
+# How far back the gridded volume reaches. The scrubber runs backwards as well
+# as forwards, and a week is what Open-Meteo serves from the forecast endpoint
+# without moving to the archive API, which lags by days.
+GRID_PAST_DAYS = 7
 
 # How long a published file may be trusted. The web app must show a staleness
 # badge past this and refuse to present scores as current. Generous relative to
@@ -134,6 +145,7 @@ def assemble(
     marine: dict,
     status: OfficialStatus | None,
     attributions: list[str],
+    grid: CloudGrid | None = None,
 ) -> dict:
     now = datetime.now(tz=timezone.utc)
     entries = []
@@ -177,6 +189,10 @@ def assemble(
             # Madeira municipalities in the RCM product.
             "fire_risk_available": False,
         },
+        # Absent when the gridded fetch failed. The map then falls back to
+        # shaping cloud from the per-spot profiles, which is the pre-volume
+        # behaviour - degraded, but not wrong, so it does not fail the run.
+        "cloud_grid": grid_header(grid, now) if grid is not None else None,
         "spots": entries,
     }
 
@@ -210,7 +226,40 @@ def _validate_profile(spot_id: str, day: dict) -> None:
             )
 
 
-def validate(document: dict, spots: list[Spot]) -> None:
+def _validate_grid(document: dict, blob_length: int | None) -> None:
+    """The volume ships as raw bytes with no header of its own.
+
+    Nothing in the blob identifies its own shape, so if the description in the
+    document and the file on disk disagree the renderer reads a transposed
+    volume and draws confident cloud in the wrong place. Length and identity
+    are checked here; there is no second chance downstream.
+    """
+    meta = document.get("cloud_grid")
+    if meta is None:
+        return
+
+    expected = (
+        meta["cols"] * meta["rows"] * len(meta["altitudes_m"]) * len(meta["times"])
+    )
+    if meta["bytes"] != expected:
+        raise ValidationError(
+            f"cloud grid declares {meta['bytes']} bytes for a {expected}-byte volume"
+        )
+    if blob_length is not None and blob_length != meta["bytes"]:
+        raise ValidationError(
+            f"cloud grid blob is {blob_length} bytes, document says {meta['bytes']}"
+        )
+    if meta["altitudes_m"] != list(ALTITUDES):
+        raise ValidationError("cloud grid altitude ladder does not match the renderer")
+    if not meta["times"]:
+        raise ValidationError("cloud grid has no time axis")
+    if meta["generated_at"] != document["generated_at"]:
+        # Two files, one pair. A mismatch means last run's weather is about to
+        # be drawn over this run's scores.
+        raise ValidationError("cloud grid and document were generated apart")
+
+
+def validate(document: dict, spots: list[Spot], blob_length: int | None = None) -> None:
     if document.get("schema_version") != SCHEMA_VERSION:
         raise ValidationError("schema_version mismatch")
 
@@ -247,6 +296,8 @@ def validate(document: dict, spots: list[Spot]) -> None:
                         f"{entry['id']} {day['date']}: score has no reasons"
                     )
 
+    _validate_grid(document, blob_length)
+
     stale_at = datetime.fromisoformat(document["stale_at"].replace("Z", "+00:00"))
     if stale_at <= datetime.now(tz=timezone.utc):
         raise ValidationError("document is already stale on generation")
@@ -272,6 +323,8 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
     spots = load_spots()
     attributions: list[str] = []
 
+    grid: CloudGrid | None = None
+
     if offline:
         # Fixtures cover viewpoints and beaches separately and carry no wind
         # for beaches, so only the viewpoint half round-trips faithfully here.
@@ -288,21 +341,39 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
         atmosphere = atmosphere_source.fetch(spots, FORECAST_HOURS)
         marine = marine_source.fetch(by_type(spots, "beach"), FORECAST_HOURS)
         status = official_source.fetch()
+        try:
+            grid = OpenMeteoCloudGrid().fetch(
+                past_days=GRID_PAST_DAYS, forecast_days=FORECAST_DAYS
+            )
+        except Exception as error:
+            # Eighty extra locations are the most fragile call in the run and
+            # the least load-bearing: the scores do not depend on them. Publish
+            # without the volume rather than losing the forecast over it.
+            print(f"cloud grid unavailable: {error}", file=sys.stderr)
+            grid = None
         attributions = [
             atmosphere_source.attribution,
             marine_source.attribution,
             official_source.attribution,
         ]
 
-    document = assemble(spots, atmosphere, marine, status, attributions)
-    validate(document, spots)
+    document = assemble(spots, atmosphere, marine, status, attributions, grid)
+    validate(document, spots, len(grid.values) if grid else None)
 
     if dry_run or out is None:
         return document
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    # Write to a temporary file and move into place, so a crash mid-write
-    # cannot leave a truncated document being served.
+    # The blob lands before the document that points at it, so a reader that
+    # catches the pair mid-publish never sees a header for a file that is not
+    # there yet. Both are staged and moved for the same reason: a crash
+    # mid-write must not leave a truncated file being served.
+    if grid is not None:
+        blob = out.parent / document["cloud_grid"]["file"]
+        blob_staging = blob.with_suffix(blob.suffix + ".tmp")
+        blob_staging.write_bytes(grid.values)
+        blob_staging.replace(blob)
+
     staging = out.with_suffix(out.suffix + ".tmp")
     staging.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
     staging.replace(out)
@@ -315,8 +386,20 @@ def summarise(document: dict) -> str:
             document["generated_at"], document["stale_at"]
         ),
         "official warnings: {}".format(len(document["official"]["warnings"])),
-        "",
     ]
+    meta = document.get("cloud_grid")
+    lines.append(
+        "cloud grid: none (map falls back to per-spot profiles)"
+        if meta is None
+        else "cloud grid: {}x{} cells, {} levels, {} hours, {:.0f} KiB".format(
+            meta["cols"],
+            meta["rows"],
+            len(meta["altitudes_m"]),
+            len(meta["times"]),
+            meta["bytes"] / 1024,
+        )
+    )
+    lines.append("")
     for entry in document["spots"]:
         day = entry["days"][0]
         if entry["type"] == "viewpoint":

@@ -15,72 +15,9 @@
  */
 
 import { addProtocol } from "maplibre-gl";
+import { decode, despike, encode, flattenOcean } from "./demFilter";
 
 export const CLEAN_DEM_PROTOCOL = "terrarium-clean";
-
-/** A sample this far from its neighbours is an artefact, not a mountain. */
-const SPIKE_THRESHOLD_M = 120;
-
-/** Terrarium: height = (R * 256 + G + B / 256) - 32768. */
-const TERRARIUM_OFFSET = 32768;
-
-function decode(pixels: Uint8ClampedArray, size: number): Float32Array {
-  const heights = new Float32Array(size * size);
-  for (let index = 0; index < heights.length; index++) {
-    const offset = index * 4;
-    heights[index] =
-      pixels[offset] * 256 +
-      pixels[offset + 1] +
-      pixels[offset + 2] / 256 -
-      TERRARIUM_OFFSET;
-  }
-  return heights;
-}
-
-function encode(
-  heights: Float32Array,
-  pixels: Uint8ClampedArray
-): void {
-  for (let index = 0; index < heights.length; index++) {
-    const value = heights[index] + TERRARIUM_OFFSET;
-    const offset = index * 4;
-    pixels[offset] = Math.floor(value / 256);
-    pixels[offset + 1] = Math.floor(value) % 256;
-    pixels[offset + 2] = Math.round((value - Math.floor(value)) * 256);
-    pixels[offset + 3] = 255;
-  }
-}
-
-function median4(a: number, b: number, c: number, d: number): number {
-  const sorted = [a, b, c, d].sort((x, y) => x - y);
-  return (sorted[1] + sorted[2]) / 2;
-}
-
-/**
- * Replace samples that disagree sharply with all four neighbours.
- *
- * Edge pixels are left alone on purpose: they are shared with the adjacent
- * tile, which is filtered with a different neighbourhood, and rewriting them
- * would open seams along every tile boundary.
- */
-export function despike(heights: Float32Array, size: number): Float32Array {
-  const output = Float32Array.from(heights);
-  for (let y = 1; y < size - 1; y++) {
-    for (let x = 1; x < size - 1; x++) {
-      const index = y * size + x;
-      const middle = median4(
-        heights[index - 1],
-        heights[index + 1],
-        heights[index - size],
-        heights[index + size]
-      );
-      if (Math.abs(heights[index] - middle) > SPIKE_THRESHOLD_M) {
-        output[index] = middle;
-      }
-    }
-  }
-  return output;
-}
 
 async function clean(buffer: ArrayBuffer): Promise<ArrayBuffer> {
   const bitmap = await createImageBitmap(new Blob([buffer]));
@@ -98,7 +35,7 @@ async function clean(buffer: ArrayBuffer): Promise<ArrayBuffer> {
   bitmap.close();
   const image = context.getImageData(0, 0, width, height);
   const size = width;
-  encode(despike(decode(image.data, size), size), image.data);
+  encode(flattenOcean(despike(decode(image.data, size), size)), image.data);
   context.putImageData(image, 0, 0);
 
   const blob = await canvas.convertToBlob({ type: "image/png" });

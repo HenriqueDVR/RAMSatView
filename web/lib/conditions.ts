@@ -6,6 +6,8 @@
  * rather than letting the UI render undefined values as blanks.
  */
 
+import type { CloudGridHeader } from "@/lib/cloudGrid";
+
 export const SCHEMA_VERSION = 2;
 
 export type Score = {
@@ -80,13 +82,19 @@ export type Conditions = {
     uv_index: Record<string, number>;
     fire_risk_available: boolean;
   };
+  /**
+   * Describes cloud-grid.bin, published beside this document. Null when the
+   * gridded fetch failed, in which case the map shapes cloud from the per-spot
+   * profiles instead - the behaviour it had before the volume existed.
+   */
+  cloud_grid: CloudGridHeader | null;
   spots: SpotEntry[];
 };
 
 const CACHE_KEY = "conditions:last-good";
 
 /** Where the hourly job publishes. Overridden per environment. */
-function conditionsUrl(): string {
+export function conditionsUrl(): string {
   return process.env.NEXT_PUBLIC_CONDITIONS_URL || "/conditions.json";
 }
 

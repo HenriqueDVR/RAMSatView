@@ -54,7 +54,7 @@ jobs:
 
       - name: Report output size
         run: |
-          ls -lh dist/conditions.json
+          ls -lh dist/
           python -c "import json;d=json.load(open('dist/conditions.json'));print(len(d['spots']),'spots,',d['generated_at'])"
 
       - name: Upload to Cloudflare R2
@@ -67,6 +67,15 @@ jobs:
           R2_BUCKET: ${{ vars.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
+          # The volume goes up first: conditions.json is what points at it, so
+          # publishing the pointer first would leave a window where the map
+          # fetches a file that is not there yet.
+          if [ -f dist/cloud-grid.bin ]; then
+            aws s3 cp dist/cloud-grid.bin "s3://${R2_BUCKET}/cloud-grid.bin" \
+              --endpoint-url "${R2_ENDPOINT}" \
+              --content-type application/octet-stream \
+              --cache-control "public, max-age=300, stale-while-revalidate=3600"
+          fi
           aws s3 cp dist/conditions.json "s3://${R2_BUCKET}/conditions.json" \
             --endpoint-url "${R2_ENDPOINT}" \
             --content-type application/json \
@@ -77,6 +86,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: conditions
-          path: dist/conditions.json
+          path: |
+            dist/conditions.json
+            dist/cloud-grid.bin
           retention-days: 7
           if-no-files-found: warn

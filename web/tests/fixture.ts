@@ -30,6 +30,10 @@ export function fixtureConditions(now = Date.now()): Conditions {
     generated_at: new Date(now - 12 * 60_000).toISOString(),
     stale_at: new Date(now + 3 * 3600_000).toISOString(),
     attribution: ["Open-Meteo", "IPMA", "EOX Sentinel-2 cloudless"],
+    // Snapshots stay on the profile-shaped fallback: a fixed volume would add
+    // a quarter-megabyte of bytes to review for a picture the deck already
+    // draws. The volume is exercised in cloudGrid.spec.ts instead.
+    cloud_grid: null,
     official: {
       source: "IPMA",
       issued_at: new Date(now - 40 * 60_000).toISOString(),
@@ -155,4 +159,64 @@ export function fixtureConditions(now = Date.now()): Conditions {
       },
     ],
   };
+}
+
+/**
+ * A small forecast volume, for the scrubber and the shaped deck.
+ *
+ * Four columns by three rows rather than the real ten by eight: the tests care
+ * that the axes are read in the right order and that the control moves through
+ * hours, and a smaller volume makes the expected bytes checkable by hand.
+ *
+ * The hours straddle now, like the published volume does, so the "now" mark
+ * and the archive half of the track both exist.
+ */
+export const FIXTURE_GRID = {
+  cols: 4,
+  rows: 3,
+  altitudes: [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000],
+  hours: 7,
+};
+
+export function fixtureGridHeader(now = Date.now()) {
+  const top = Math.floor(now / 3_600_000) * 3_600_000;
+  const times: string[] = [];
+  for (let hour = -3; hour < FIXTURE_GRID.hours - 3; hour++) {
+    times.push(new Date(top + hour * 3_600_000).toISOString());
+  }
+  const cells = FIXTURE_GRID.cols * FIXTURE_GRID.rows;
+  return {
+    file: "cloud-grid.bin",
+    generated_at: new Date(now - 12 * 60_000).toISOString(),
+    bbox: [-17.5, 32.3, -16.2, 33.2] as [number, number, number, number],
+    cols: FIXTURE_GRID.cols,
+    rows: FIXTURE_GRID.rows,
+    altitudes_m: FIXTURE_GRID.altitudes,
+    times,
+    bytes: times.length * FIXTURE_GRID.altitudes.length * cells,
+  };
+}
+
+/**
+ * A deck that thickens over the hours and lies over the north half of the box,
+ * so a wrong axis or a stuck hour shows up as a picture that does not change.
+ */
+export function fixtureGridBytes(header = fixtureGridHeader()): Uint8Array {
+  const { cols, rows, altitudes_m, times } = header;
+  const values = new Uint8Array(header.bytes);
+  let offset = 0;
+  for (let hour = 0; hour < times.length; hour++) {
+    for (let level = 0; level < altitudes_m.length; level++) {
+      const altitude = altitudes_m[level];
+      const inDeck = altitude >= 750 && altitude <= 1500;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const north = row < rows / 2;
+          const growth = (hour + 1) / times.length;
+          values[offset++] = inDeck && north ? Math.round(255 * growth) : 0;
+        }
+      }
+    }
+  }
+  return values;
 }

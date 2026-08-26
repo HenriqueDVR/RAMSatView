@@ -16,11 +16,26 @@ import {
   type SpotEntry,
 } from "@/lib/conditions";
 import type { Locale } from "@/lib/i18n";
-import { CloudDeckLayer } from "@/lib/map/CloudDeckLayer";
+import { CloudDeckLayer, fieldFrame } from "@/lib/map/CloudDeckLayer";
+import {
+  envelopeProfile,
+  hourSlice,
+  type CloudGrid,
+} from "@/lib/cloudGrid";
 import { SEA_LAYER_ID, SeaLayer } from "@/lib/map/SeaLayer";
+import { SkyLayer } from "@/lib/map/SkyLayer";
 import { registerCleanDemProtocol } from "@/lib/map/demProtocol";
 import { BOUNDS, CENTRE, DEM_SOURCE_ID } from "@/lib/map/sources";
-import { HILLSHADE_LAYER_ID, TERRAIN_EXAGGERATION, buildStyle } from "@/lib/map/style";
+import {
+  HILLSHADE_FILL_LAYER_ID,
+  HILLSHADE_LAYER_ID,
+  SATELLITE_LAYER_ID,
+  TERRAIN_EXAGGERATION,
+  buildStyle,
+} from "@/lib/map/style";
+import { applyLighting, skyPalette } from "@/lib/map/lighting";
+import { sunPosition, sunVector } from "@/lib/sun";
+import { DEFAULT_LAYERS, type LayerState } from "@/lib/layers";
 
 /**
  * MapLibre wrapper.
@@ -39,7 +54,18 @@ const MAPLIBRE_WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
  * Flat overhead does not read as terrain, and facing anywhere else puts the
  * dawn horizon - the one thing the whole site is about - behind the camera.
  */
-const DEFAULT_PITCH = 71;
+const DEFAULT_PITCH = 70;
+
+/**
+ * Vertical field of view, degrees.
+ *
+ * MapLibre's default is about 37, and at this pitch that puts the horizon
+ * four degrees above the top edge of the screen - the sunrise this whole site
+ * is about was being framed just out of shot. Widening to 48 brings the
+ * horizon and the sky above it into the frame without going so wide that the
+ * island distorts.
+ */
+const VERTICAL_FOV = 48;
 
 /**
  * Past ~72 degrees the camera starts clipping into the terrain it is standing
@@ -62,9 +88,81 @@ function markerColor(value: number | null): string {
   return "#dc2626";
 }
 
+/**
+ * How many cloud slices this device can afford.
+ *
+ * The volume is drawn as stacked full-screen sheets, so cost is slices x
+ * pixels and nothing else. A phone at 3x pixel ratio is shading nine times the
+ * fragments of a laptop for a screen a fifth the size, and the deck is the one
+ * thing on the map that can be thinned without losing the answer.
+ */
+function sliceBudget(): number {
+  if (typeof window === "undefined") return 22;
+  const pixels = window.innerWidth * (window.devicePixelRatio || 1);
+  if (window.innerWidth < 720) return 12;
+  return pixels > 2600 ? 16 : 22;
+}
+
+/**
+ * Room for the HUD, in pixels.
+ *
+ * MapLibre's padding moves the projection centre rather than cropping, so
+ * reserving the top pushes the horizon down into the visible part of the
+ * frame instead of leaving it behind the masthead.
+ */
+function hudPadding(): { top: number; bottom: number; left: number; right: number } {
+  if (typeof window === "undefined") return { top: 0, bottom: 0, left: 0, right: 0 };
+  const wide = window.innerWidth >= 1024;
+  return {
+    top: wide ? 150 : 0,
+    bottom: wide ? 40 : 0,
+    left: 0,
+    right: 0,
+  };
+}
+
+/**
+ * Run something once the style exists, rather than once everything has loaded.
+ *
+ * `load` waits for the first complete frame - style, sources *and* their
+ * initial tiles. The Terrarium DEM goes through a re-encoding protocol on the
+ * main thread and, on a cold cache behind a slow renderer, its tiles are still
+ * arriving long after the map is usable; `map.isStyleLoaded()` is false for
+ * the same reason, since it also waits on every source cache.
+ *
+ * Waiting on either of those meant the custom layers and the lighting were
+ * never installed at all on a slow load, which is a bug that only appears on
+ * someone else's machine. The style being parsed is the only precondition
+ * that addLayer and setPaintProperty actually have.
+ */
+function whenStyleReady(instance: MapLibreMap, run: () => void): () => void {
+  if (instance.style?.stylesheet) {
+    run();
+    return () => {};
+  }
+  const handler = () => run();
+  instance.once("style.load", handler);
+  return () => instance.off("style.load", handler);
+}
+
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * The sunrise this document is about, as the default lighting instant.
+ *
+ * Falling back to "now" would light the scene for 3pm on the afternoon
+ * someone happens to be planning, which is a picture of a place they will
+ * never see.
+ */
+function defaultTime(spots: SpotEntry[]): Date {
+  for (const spot of spots) {
+    const day = spot.days[0];
+    if (day && isViewpointDay(day)) return new Date(day.sunrise_utc);
+  }
+  return new Date();
 }
 
 /** The profile the deck is drawn from: the selected viewpoint, else the highest. */
@@ -86,15 +184,39 @@ export default function MapView({
   locale,
   selectedId,
   onSelect,
+  layers = DEFAULT_LAYERS,
+  grid = null,
+  timeIndex = 0,
+  time,
 }: {
   spots: SpotEntry[];
   locale: Locale;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  layers?: LayerState;
+  /**
+   * The forecast volume, when one was published. Null falls the deck back to
+   * the selected viewpoint's column, which is the shape it had before the
+   * gridded ingest existed.
+   */
+  grid?: CloudGrid | null;
+  /** Which hour of the volume is being shown. Ignored without a grid. */
+  timeIndex?: number;
+  /**
+   * The instant the scene is lit for. Defaults to the sunrise the forecast is
+   * about, because that is the moment the whole product describes - not
+   * whenever the page happens to be open.
+   */
+  time?: Date;
 }) {
   const container = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const deck = useRef<CloudDeckLayer | null>(null);
+  const sea = useRef<SeaLayer | null>(null);
+  const sky = useRef<SkyLayer | null>(null);
+  // Once the DEM has failed there is nothing for the terrain switch to turn
+  // back on, and asking for it again would put the broken globe back.
+  const demFailed = useRef(false);
   const markers = useRef<Map<string, Marker>>(new Map());
   // Kept in a ref so re-renders do not force the marker layer to rebuild just
   // because the parent passed a new function identity. Written in an effect
@@ -109,6 +231,13 @@ export default function MapView({
     () => activeProfile(spots, selectedId),
     [spots, selectedId]
   );
+
+  // One sun for the whole scene: the sky gradient, both hillshades, the
+  // cloud's self-shadowing and the glitter on the water all read from this.
+  const sun = useMemo(() => {
+    const instant = time ?? defaultTime(spots);
+    return sunPosition(instant, CENTRE[1], CENTRE[0]);
+  }, [time, spots]);
 
   useEffect(() => {
     if (!container.current || map.current) return;
@@ -134,6 +263,13 @@ export default function MapView({
       ],
       attributionControl: { compact: true },
     });
+    // The masthead and the panels sit over the top of the map, so the
+    // projection centre is pushed down to match. Without this the horizon -
+    // and the sunrise, which is the entire subject - renders underneath the
+    // title bar. Set after construction: v6's MapOptions has no padding field,
+    // only the camera methods do.
+    instance.setPadding(hudPadding());
+    instance.setVerticalFieldOfView(VERTICAL_FOV);
     map.current = instance;
     // The end-to-end suite needs a handle on an imperative object React never
     // exposes. Read-only, and cheaper than instrumenting the component.
@@ -144,13 +280,21 @@ export default function MapView({
       bounds: BOUNDS,
       exaggeration: TERRAIN_EXAGGERATION,
       animate: !prefersReducedMotion(),
+      maxSlices: sliceBudget(),
     });
     deck.current = layer;
 
-    instance.on("load", () => {
-      // The sea goes in first: it must occlude the bathymetry before anything
+    whenStyleReady(instance, () => {
+      // Bottom of the stack, and drawn at the far plane, so it fills only the
+      // pixels nothing else claims.
+      const dome = new SkyLayer();
+      sky.current = dome;
+      instance.addLayer(dome, SATELLITE_LAYER_ID);
+      // The sea goes in next: it must occlude the bathymetry before anything
       // translucent is blended over it.
-      instance.addLayer(new SeaLayer());
+      const water = new SeaLayer(!prefersReducedMotion());
+      sea.current = water;
+      instance.addLayer(water);
       instance.addLayer(layer);
       layer.setProfile(activeProfile(spots, selectedId));
     });
@@ -163,9 +307,10 @@ export default function MapView({
     const onError = (event: MapErrorEvent) => {
       const sourceId = (event as MapErrorEvent & { sourceId?: string }).sourceId;
       if (sourceId !== DEM_SOURCE_ID || !instance.getTerrain()) return;
+      demFailed.current = true;
       instance.setTerrain(null);
-      if (instance.getLayer(HILLSHADE_LAYER_ID)) {
-        instance.removeLayer(HILLSHADE_LAYER_ID);
+      for (const id of [HILLSHADE_LAYER_ID, HILLSHADE_FILL_LAYER_ID]) {
+        if (instance.getLayer(id)) instance.removeLayer(id);
       }
       // Without terrain the raster layers are drawn flat at zero, which is
       // exactly where the sea plane sits - and being a depth-writing 3D layer
@@ -183,15 +328,78 @@ export default function MapView({
       instance.remove();
       map.current = null;
       deck.current = null;
+      sea.current = null;
+      sky.current = null;
       pins.clear();
     };
     // Mount only. The deck and markers are kept current by the effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The deck's shape: from the volume where there is one, from the selected
+  // viewpoint's column otherwise. Both paths end in setProfile because the
+  // slices are cut from a profile either way - what the grid adds is the
+  // per-pixel coverage the shader looks up, which the slices then vary across.
   useEffect(() => {
-    deck.current?.setProfile(profile);
-  }, [profile]);
+    const layer = deck.current;
+    if (!layer) return;
+    if (!grid) {
+      layer.setField(null);
+      layer.setProfile(profile);
+      return;
+    }
+    const { bbox, altitudes_m, cols, rows } = grid.header;
+    layer.setField(
+      fieldFrame(bbox, altitudes_m, cols, rows, hourSlice(grid, timeIndex))
+    );
+    layer.setProfile(envelopeProfile(grid, timeIndex));
+  }, [profile, grid, timeIndex]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance) return;
+    const vector = sunVector(sun);
+    const apply = () => {
+      applyLighting(instance, sun);
+      deck.current?.setSun(vector, sun.elevation);
+      sea.current?.setSun(vector, sun.elevation);
+      sky.current?.setSun(vector, sun.elevation, skyPalette(sun.elevation));
+    };
+    return whenStyleReady(instance, apply);
+  }, [sun]);
+
+  // Layer switches. Each one is applied the cheapest way that survives being
+  // flipped repeatedly: visibility rather than add/remove, so nothing is
+  // rebuilt and no tile is fetched twice.
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance) return;
+
+    const apply = () => {
+      if (instance.getLayer(SATELLITE_LAYER_ID)) {
+        instance.setLayoutProperty(
+          SATELLITE_LAYER_ID,
+          "visibility",
+          layers.satellite ? "visible" : "none"
+        );
+      }
+      if (!demFailed.current) {
+        instance.setTerrain(
+          layers.terrain
+            ? { source: DEM_SOURCE_ID, exaggeration: TERRAIN_EXAGGERATION }
+            : null
+        );
+      }
+      deck.current?.setVisible(layers.cloud);
+      // The sea plane is drawn at -2m and writes depth. With the terrain off,
+      // every raster is flat at zero and the plane wins the depth test over
+      // the whole map - an empty blue rectangle. So it follows the terrain
+      // switch whatever the sea switch says.
+      sea.current?.setVisible(layers.sea && layers.terrain && !demFailed.current);
+    };
+
+    return whenStyleReady(instance, apply);
+  }, [layers]);
 
   useEffect(() => {
     const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -217,7 +425,10 @@ export default function MapView({
       const element = document.createElement("button");
       element.type = "button";
       element.className = "map-pin";
-      element.style.background = markerColor(score ? score.value : null);
+      // The pin body stays dark whatever the score - it is read against a dawn
+      // sky and a cloud deck, and a saturated fill loses its own numerals at
+      // 32px. The score colour drives the ring and the glow instead.
+      element.style.setProperty("--pin", markerColor(score ? score.value : null));
       element.textContent = score ? String(Math.round(score.value)) : "?";
       element.addEventListener("click", (event) => {
         event.stopPropagation();

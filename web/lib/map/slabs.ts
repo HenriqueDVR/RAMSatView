@@ -14,11 +14,14 @@ export const MIN_VISIBLE_FRACTION = 0.12;
 /** Vertical spacing between drawn slabs. Finer than this reads as solid. */
 export const SLAB_STEP_M = 200;
 
-/** Fill rate, not memory, is the constraint on a phone. */
-export const MAX_SLABS = 10;
-
-/** A slab at full cloud fraction is still see-through. */
-export const MAX_SLAB_OPACITY = 0.34;
+/**
+ * Cap on the samples selectSlabs returns.
+ *
+ * The volume renderer only reads the first and last of them - it builds its
+ * own evenly spaced ladder between the two - so this now bounds the search,
+ * not the drawing.
+ */
+export const MAX_SLABS = 8;
 
 // The matrix MapLibre hands a custom layer (the transform's _viewProjMatrix)
 // does NOT take 0..1 mercator coordinates - that is _mercatorMatrix, which is
