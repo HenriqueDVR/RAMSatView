@@ -97,9 +97,13 @@ export default function MapView({
   const deck = useRef<CloudDeckLayer | null>(null);
   const markers = useRef<Map<string, Marker>>(new Map());
   // Kept in a ref so re-renders do not force the marker layer to rebuild just
-  // because the parent passed a new function identity.
+  // because the parent passed a new function identity. Written in an effect
+  // rather than during render: a ref write during render is invisible to React
+  // and runs twice under StrictMode.
   const select = useRef(onSelect);
-  select.current = onSelect;
+  useEffect(() => {
+    select.current = onSelect;
+  }, [onSelect]);
 
   const profile = useMemo(
     () => activeProfile(spots, selectedId),
@@ -171,12 +175,15 @@ export default function MapView({
     };
     instance.on("error", onError);
 
+    // Captured here rather than read in the cleanup: by the time cleanup
+    // runs, markers.current may already point at a different Map.
+    const pins = markers.current;
     return () => {
       instance.off("error", onError);
       instance.remove();
       map.current = null;
       deck.current = null;
-      markers.current.clear();
+      pins.clear();
     };
     // Mount only. The deck and markers are kept current by the effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -194,6 +201,10 @@ export default function MapView({
     return () => query.removeEventListener("change", sync);
   }, []);
 
+  // Markers are rebuilt for the spot list and the locale only. Selection is
+  // applied by the effect below, because rebuilding eight pins - each one a
+  // DOM node, a listener and a MapLibre Marker - every time the user taps a
+  // card is real work for a class name.
   useEffect(() => {
     const instance = map.current;
     if (!instance) return;
@@ -205,8 +216,7 @@ export default function MapView({
       const score = headlineScore(spot);
       const element = document.createElement("button");
       element.type = "button";
-      element.className =
-        spot.id === selectedId ? "map-pin selected" : "map-pin";
+      element.className = "map-pin";
       element.style.background = markerColor(score ? score.value : null);
       element.textContent = score ? String(Math.round(score.value)) : "?";
       element.addEventListener("click", (event) => {
@@ -230,7 +240,13 @@ export default function MapView({
 
       markers.current.set(spot.id, marker);
     }
-  }, [spots, selectedId, locale]);
+  }, [spots, locale]);
+
+  useEffect(() => {
+    for (const [id, marker] of markers.current) {
+      marker.getElement().classList.toggle("selected", id === selectedId);
+    }
+  }, [selectedId, spots]);
 
   useEffect(() => {
     const instance = map.current;

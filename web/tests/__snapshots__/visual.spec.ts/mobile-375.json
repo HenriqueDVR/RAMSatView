@@ -1,0 +1,49 @@
+{
+  "viewpoint": {
+    "viewport": 375,
+    "documentOverflow": 0,
+    "boxes": {
+      ".map": {
+        "left": 16,
+        "width": 343,
+        "overflowsRight": false
+      },
+      "#spot-pico-arieiro": {
+        "left": 16,
+        "width": 343,
+        "overflowsRight": false
+      },
+      "#spot-pico-arieiro .profile": {
+        "left": 149,
+        "width": 193,
+        "overflowsRight": false
+      },
+      "#spot-pico-arieiro .dial": {
+        "left": 33,
+        "width": 104,
+        "overflowsRight": false
+      },
+      "#spot-pico-arieiro .card-readout": {
+        "left": 33,
+        "width": 309,
+        "overflowsRight": false
+      }
+    }
+  },
+  "beach": {
+    "viewport": 375,
+    "documentOverflow": 0,
+    "boxes": {
+      "#spot-porto-santo-beach": {
+        "left": 16,
+        "width": 343,
+        "overflowsRight": false
+      },
+      ".cards": {
+        "left": 16,
+        "width": 343,
+        "overflowsRight": false
+      }
+    }
+  }
+}

@@ -9,7 +9,14 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./tests",
+  // Markup and layout snapshots do not vary by OS, so the default per-platform
+  // directories would only fork the same files between a dev machine and CI.
+  snapshotPathTemplate: "{testDir}/__snapshots__/{testFileName}/{arg}{ext}",
   fullyParallel: false,
+  // One worker, deliberately. Two SwiftShader maps rendering side by side on
+  // one CPU is enough to push tile loading past the timeout, which shows up as
+  // a flake rather than as the slow machine it actually is.
+  workers: 1,
   // SwiftShader draws terrain, imagery and the deck at a few frames per
   // second, and each test waits for tiles as well. The default 30s is not a
   // meaningful budget here.
