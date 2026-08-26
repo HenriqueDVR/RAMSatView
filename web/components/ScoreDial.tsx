@@ -62,6 +62,7 @@ export default function ScoreDial({
             stroke={color}
             strokeWidth={STROKE}
             strokeLinecap="round"
+            className="dial-arc"
             strokeDasharray={`${filled} ${CIRCUMFERENCE - filled}`}
           />
           <circle

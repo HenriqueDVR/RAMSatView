@@ -19,36 +19,13 @@
  */
 
 import { MercatorCoordinate } from "maplibre-gl";
+import { MAX_SLAB_OPACITY, selectSlabs, type ProfilePoint } from "./slabs";
 import type {
   CustomLayerInterface,
   CustomRenderMethodInput,
   Map as MapLibreMap,
 } from "maplibre-gl";
 
-/** [altitude_m, cloud_fraction], as published by the ingest. */
-export type ProfilePoint = [number, number];
-
-/** Below this the layer is haze, not deck, and drawing it just fogs the view. */
-const MIN_VISIBLE_FRACTION = 0.12;
-
-/** Vertical spacing between drawn slabs. Finer than this reads as solid. */
-const SLAB_STEP_M = 200;
-
-/** Fill rate, not memory, is the constraint on a phone. */
-const MAX_SLABS = 10;
-
-/** A slab at full cloud fraction is still see-through. */
-const MAX_SLAB_OPACITY = 0.34;
-
-// The matrix MapLibre hands a custom layer (the transform's _viewProjMatrix)
-// does NOT take 0..1 mercator coordinates - that is _mercatorMatrix, which is
-// what v4 passed and what the shipped docstring example still shows. It takes
-// world PIXELS in x and y (mercator x worldSize, so zoom-dependent) and
-// METRES in z, because it scales z by pixelsPerMetre itself.
-//
-// Geometry is therefore stored zoom-independently as mercator + altitude, and
-// scaled here each frame. Getting this wrong is silent: the quads project to a
-// single off-screen point behind the far plane and nothing is ever drawn.
 const VERTEX_SOURCE = `#version 300 es
 in vec2 a_mercator;
 in float a_altitude;
@@ -152,34 +129,7 @@ function compile(
   return shader;
 }
 
-/**
- * Pick the altitudes worth drawing.
- *
- * Exported because the choice of what counts as a deck is a modelling decision
- * and deserves tests of its own, not a debugger session inside a render loop.
- */
-export function selectSlabs(
-  profile: ProfilePoint[],
-  stepM = SLAB_STEP_M
-): ProfilePoint[] {
-  const slabs: ProfilePoint[] = [];
-  let nextAltitude = -Infinity;
-  for (const [altitude, fraction] of profile) {
-    if (fraction < MIN_VISIBLE_FRACTION) continue;
-    if (altitude < nextAltitude) continue;
-    slabs.push([altitude, fraction]);
-    nextAltitude = altitude + stepM;
-  }
-  if (slabs.length <= MAX_SLABS) return slabs;
-  // Keep the ends and thin the middle: the base and the top of the deck are
-  // the two altitudes the user is actually comparing against the summit.
-  const stride = slabs.length / MAX_SLABS;
-  const thinned: ProfilePoint[] = [];
-  for (let index = 0; index < MAX_SLABS; index++) {
-    thinned.push(slabs[Math.min(slabs.length - 1, Math.round(index * stride))]);
-  }
-  return thinned;
-}
+export type { ProfilePoint };
 
 export type CloudDeckOptions = {
   /** Lng/lat box the deck covers: [west, south, east, north]. */

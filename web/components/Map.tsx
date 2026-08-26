@@ -9,6 +9,7 @@ import {
   setWorkerUrl,
 } from "maplibre-gl";
 import {
+  deckVerdict,
   headlineScore,
   isViewpointDay,
   type ProfilePoint,
@@ -237,14 +238,34 @@ export default function MapView({
     const spot = spots.find((candidate) => candidate.id === selectedId);
     if (!spot) return;
 
-    // A viewpoint is framed from below and to the side, so the deck and the
-    // summit are seen against each other. A beach is looked down on.
-    const viewpoint = spot.type === "viewpoint";
+    // A beach is looked down on. A viewpoint is framed against the cloud, and
+    // where that cloud sits decides the framing: a deck below the summit is
+    // seen from above, while a deck overhead has to be pulled back and looked
+    // up at or it sits outside the frustum entirely and the summit appears
+    // clear when the forecast says it is socked in.
+    const day = spot.days[0];
+    const verdict =
+      spot.type === "viewpoint" && day && isViewpointDay(day)
+        ? deckVerdict(day, spot.elevation_m)
+        : null;
+
+    if (verdict === null) {
+      instance.flyTo({
+        center: [spot.lon, spot.lat],
+        zoom: 12.8,
+        pitch: 40,
+        bearing: 0,
+        speed: 1.1,
+      });
+      return;
+    }
+
+    const overhead = verdict === "inside";
     instance.flyTo({
       center: [spot.lon, spot.lat],
-      zoom: viewpoint ? 12.2 : 12.8,
-      pitch: viewpoint ? MAX_PITCH - 4 : 40,
-      bearing: viewpoint ? 80 : 0,
+      zoom: overhead ? 11.4 : 12.2,
+      pitch: overhead ? MAX_PITCH : MAX_PITCH - 4,
+      bearing: 80,
       speed: 1.1,
     });
   }, [selectedId, spots]);

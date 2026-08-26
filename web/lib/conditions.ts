@@ -164,6 +164,44 @@ export function headlineScore(spot: SpotEntry): Score | null {
   return isViewpointDay(day) ? day.cloud_sea : day.score;
 }
 
+/** Cloud fraction at an arbitrary altitude, interpolated from the profile. */
+export function cloudAt(profile: ProfilePoint[], altitudeM: number): number {
+  if (!profile.length) return 0;
+  if (altitudeM <= profile[0][0]) return profile[0][1];
+  const last = profile[profile.length - 1];
+  if (altitudeM >= last[0]) return last[1];
+  for (let index = 1; index < profile.length; index++) {
+    const [upperH, upperC] = profile[index];
+    if (upperH < altitudeM) continue;
+    const [lowerH, lowerC] = profile[index - 1];
+    const span = upperH - lowerH;
+    if (span <= 0) return upperC;
+    return lowerC + ((altitudeM - lowerH) / span) * (upperC - lowerC);
+  }
+  return last[1];
+}
+
+/**
+ * Matches DECK_THRESHOLD and SUMMIT_MARGIN_M in ingest/scoring/inversion.py.
+ * The two must agree: the chart and the score describe the same morning, and
+ * a viewer who sees "above the cloud" beside a score of 4 stops trusting both.
+ */
+const DECK_THRESHOLD = 0.35;
+const SUMMIT_MARGIN_M = 150;
+
+export type DeckVerdict = "above" | "inside" | "none";
+
+/**
+ * The one sentence the whole viewpoint card exists to answer: will you be
+ * standing above the cloud, inside it, or is there no deck at all?
+ */
+export function deckVerdict(day: ViewpointDay, elevationM: number): DeckVerdict {
+  if (cloudAt(day.profile, elevationM) >= DECK_THRESHOLD) return "inside";
+  const top = day.deck_top_m;
+  if (top !== null && top < elevationM - SUMMIT_MARGIN_M) return "above";
+  return "none";
+}
+
 export function worstWarning(warnings: Warning[]): Warning | null {
   if (!warnings.length) return null;
   return [...warnings].sort((a, b) => b.severity - a.severity)[0];

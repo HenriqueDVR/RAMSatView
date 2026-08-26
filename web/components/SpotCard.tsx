@@ -1,7 +1,9 @@
 "use client";
 
 import ScoreDial from "@/components/ScoreDial";
+import VerticalProfile from "@/components/VerticalProfile";
 import {
+  deckVerdict,
   isViewpointDay,
   worstWarning,
   type SpotEntry,
@@ -46,33 +48,71 @@ export default function SpotCard({
   return (
     <article
       className={selected ? "card selected" : "card"}
-      onClick={() => onSelect?.(spot.id)}
       id={`spot-${spot.id}`}
+      aria-current={selected ? "true" : undefined}
     >
-      <header>
-        <h3>{name}</h3>
-        <span className="muted">
+      <header className="card-head">
+        <h3>
+          {/*
+            The selectable thing is the name, not the whole card. A card-wide
+            click target cannot be reached from a keyboard without either
+            faking a button with role and key handlers or nesting interactive
+            elements inside it, and both are worse than one honest button.
+          */}
+          <button
+            type="button"
+            className="card-select"
+            onClick={() => onSelect?.(spot.id)}
+          >
+            {name}
+          </button>
+        </h3>
+        <p className="card-meta">
           {formatLocalDate(day.date, locale)}
-          {spot.type === "viewpoint" &&
-            ` · ${spot.elevation_m.toFixed(0)} m`}
-        </span>
+          {spot.type === "viewpoint" && (
+            <>
+              <span aria-hidden="true"> &#183; </span>
+              {spot.elevation_m.toFixed(0)} m
+            </>
+          )}
+        </p>
       </header>
 
       {isViewpointDay(day) ? (
         <>
-          <div className="dials">
+          {(() => {
+            const verdict = deckVerdict(day, spot.elevation_m);
+            return (
+              <p className={`verdict verdict-${verdict}`}>
+                {t(`verdict.${verdict}` as TranslationKey)}
+              </p>
+            );
+          })()}
+
+          <div className="card-readout">
             <ScoreDial
               score={day.cloud_sea}
               label={t("score.cloud_sea")}
               confidenceLabel={confidence}
             />
-            <ScoreDial
-              score={day.visibility}
-              label={t("score.visibility")}
-              confidenceLabel={confidence}
+            <VerticalProfile
+              profile={day.profile}
+              summitM={spot.elevation_m}
+              deckTopM={day.deck_top_m}
+              summitLabel={t("label.summit")}
+              caption={t("profile.caption", {
+                deck: day.deck_top_m?.toFixed(0) ?? 0,
+                summit: spot.elevation_m.toFixed(0),
+              })}
+              readout={(pct) => t("profile.at_summit", { pct })}
             />
           </div>
+
           <dl className="facts">
+            <Fact
+              label={t("score.visibility")}
+              value={day.visibility.value.toFixed(0)}
+            />
             <Fact
               label={t("label.sunrise")}
               value={formatLocalTime(day.sunrise_utc, locale)}
@@ -85,13 +125,8 @@ export default function SpotCard({
               label={t("label.wind")}
               value={`${day.wind_kmh.toFixed(0)} km/h`}
             />
-            {day.deck_top_m !== null && (
-              <Fact
-                label={t("label.deck")}
-                value={`${day.deck_top_m.toFixed(0)} m`}
-              />
-            )}
           </dl>
+
           <ul className="reasons">
             {[...day.cloud_sea.reasons, ...day.visibility.reasons].map(
               (reason) => (
@@ -102,13 +137,14 @@ export default function SpotCard({
         </>
       ) : (
         <>
-          <div className="dials">
+          <div className="card-readout">
             <ScoreDial
               score={day.score}
               label={t("score.beach")}
               confidenceLabel={confidence}
             />
           </div>
+
           <dl className="facts">
             {day.sst_c !== null && (
               <Fact label={t("label.water")} value={`${day.sst_c} °C`} />
@@ -129,11 +165,13 @@ export default function SpotCard({
               <Fact label={t("label.uv")} value={day.uv_index.toFixed(1)} />
             )}
           </dl>
+
           {worstWarning(day.warnings) && (
             <p className="card-warning" role="alert">
               {t("warning.official")}
             </p>
           )}
+
           <ul className="reasons">
             {day.score.reasons.map((reason) => (
               <li key={reason}>{reason}</li>
