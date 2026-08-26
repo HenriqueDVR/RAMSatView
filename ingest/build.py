@@ -340,7 +340,18 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
         # beaches need surface wind.
         atmosphere = atmosphere_source.fetch(spots, FORECAST_HOURS)
         marine = marine_source.fetch(by_type(spots, "beach"), FORECAST_HOURS)
-        status = official_source.fetch()
+        try:
+            status = official_source.fetch()
+        except Exception as error:
+            # IPMA answers 403 to datacentre IP ranges, so the hourly CI run
+            # cannot reach it even though a laptop can. Losing the official
+            # warnings is a real loss, but it is not a reason to publish
+            # nothing: the forecast is the product, the warnings are a relay,
+            # and the page already tells people to check IPMA themselves. The
+            # document says so plainly with a null source rather than pretending
+            # there are no warnings today.
+            print(f"official warnings unavailable: {error}", file=sys.stderr)
+            status = None
         try:
             grid = OpenMeteoCloudGrid().fetch(
                 past_days=GRID_PAST_DAYS, forecast_days=FORECAST_DAYS
@@ -354,8 +365,10 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
         attributions = [
             atmosphere_source.attribution,
             marine_source.attribution,
-            official_source.attribution,
         ]
+        # Only credited when its data is actually in the document.
+        if status is not None:
+            attributions.append(official_source.attribution)
 
     document = assemble(spots, atmosphere, marine, status, attributions, grid)
     validate(document, spots, len(grid.values) if grid else None)

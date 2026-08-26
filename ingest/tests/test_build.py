@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from ingest import build
 from ingest.build import (
     FORECAST_DAYS,
     SCHEMA_VERSION,
@@ -288,3 +289,37 @@ def test_validate_rejects_a_grid_from_another_run():
     document["cloud_grid"]["generated_at"] = "2020-01-01T00:00:00Z"
     with pytest.raises(ValidationError, match="generated apart"):
         validate(document, spots)
+
+
+def test_a_blocked_ipma_does_not_stop_the_publish(monkeypatch):
+    """IPMA answers 403 to datacentre IPs, which is where the cron runs.
+
+    The forecast is the product; the official warnings are a relay of someone
+    else's. Losing the relay must cost the warnings and the attribution, not
+    the whole run - but the document has to say so, rather than showing an
+    empty warning list that reads as "no warnings today".
+    """
+    spots = load_spots()
+    atmosphere, marine, _ = _load_offline(spots)
+
+    monkeypatch.setattr(
+        build.OpenMeteoAtmosphere, "fetch", lambda self, *a, **k: atmosphere
+    )
+    monkeypatch.setattr(build.OpenMeteoMarine, "fetch", lambda self, *a, **k: marine)
+    monkeypatch.setattr(
+        build.OpenMeteoCloudGrid,
+        "fetch",
+        lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("no grid")),
+    )
+
+    def forbidden(self):
+        raise RuntimeError("403 Client Error: Forbidden")
+
+    monkeypatch.setattr(build.IPMA, "fetch", forbidden)
+
+    document = run(out=None, dry_run=True, offline=False)
+    assert document["official"]["source"] is None
+    assert document["official"]["warnings"] == []
+    assert not any("IPMA" in line for line in document["attribution"])
+    # And the part that matters is still there.
+    validate(document, spots)
