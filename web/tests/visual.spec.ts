@@ -214,7 +214,13 @@ test("the phone keeps the map and brings the numbers up over it", async ({
   await page.goto("/en");
 
   const sheet = page.locator(".sidebar");
-  const state = () => sheet.getAttribute("data-sheet");
+  // Thirty seconds, not Playwright's five: the sheet's state is React's, and
+  // it is set the instant the tap lands, but on a CI runner rendering the map
+  // through SwiftShader the tap itself can be a long way behind the call that
+  // sent it. Five seconds failed there while passing every time locally, which
+  // is a budget problem wearing a bug's clothes.
+  const atState = (value: string) =>
+    expect(sheet).toHaveAttribute("data-sheet", value, { timeout: 30_000 });
 
   // The map is the page: it fills the viewport rather than sitting in a band
   // at the top of a document that scrolls. This is the regression that matters
@@ -224,7 +230,7 @@ test("the phone keeps the map and brings the numbers up over it", async ({
   expect(map!.width).toBe(viewport.width);
   expect(Math.round(map!.height)).toBe(viewport.height);
 
-  await expect.poll(state).toBe("peek");
+  await atState("peek");
   await expect(page.locator(".spot-list")).toBeHidden();
 
   // Tapping a pin asks about that spot, and the sheet answers with it rather
@@ -235,13 +241,13 @@ test("the phone keeps the map and brings the numbers up over it", async ({
   // lands on a button that has already been replaced.
   await page.waitForSelector(".map-pin");
   await page.getByRole("button", { name: /Pico Ruivo/ }).click();
-  await expect.poll(state).toBe("detail");
+  await atState("detail");
   await expect(page.locator(".spot-detail h3")).toHaveText("Pico Ruivo");
   await expect(page.locator(".spot-list")).toBeHidden();
 
   // And the list is one tap further on.
   await page.locator(".sheet-handle").click();
-  await expect.poll(state).toBe("full");
+  await atState("full");
   await expect(page.locator(".spot-list")).toBeVisible();
 
   // Nothing about any of this scrolls the page out from under the map.
