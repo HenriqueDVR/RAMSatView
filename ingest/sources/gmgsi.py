@@ -76,8 +76,21 @@ class ScanWindow:
     north: float
 
 
-# The map bounds, the same box the forecast volume covers.
-DEFAULT_WINDOW = ScanWindow(west=-17.5, south=32.3, east=-16.2, north=33.2)
+# The *camera* box, not the forecast volume's - see VIEW_BOUNDS in
+# web/lib/map/sources.ts, which this deliberately mirrors.
+#
+# Cropping this to the archipelago was free to compute and cost the picture
+# everything: the observed field ended at the edge of a box roughly the size of
+# the islands, so weather arrived from nowhere and left to nowhere, and pulling
+# the camera back showed an ocean with a small rectangle of cloud sitting on
+# it. Widening is close to free here in a way it is not for the forecast grid.
+# The whole global mosaic is downloaded either way and this only decides how
+# much of it survives the crop; the blob goes from ~2KB to ~110KB for the nine
+# scans, against 244KB for the forecast volume already shipping beside it.
+#
+# It reaches the north edge of the Canaries at the bottom, which is wanted -
+# the same trade-wind deck runs down there and seeing it approach is context.
+DEFAULT_WINDOW = ScanWindow(west=-21.0, south=29.6, east=-12.7, north=36.0)
 
 
 @dataclass(frozen=True)

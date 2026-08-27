@@ -143,14 +143,26 @@ def test_crop_refuses_a_window_the_mosaic_does_not_cover():
         crop(_north_to_south_mosaic(), window, HOUR, "key")
 
 
-def test_default_window_matches_the_map_bounds():
-    # web/lib/map/sources.ts BOUNDS, and openmeteo_grid.DEFAULT_GRID.
+def test_default_window_matches_the_camera_bounds():
+    # web/lib/map/sources.ts VIEW_BOUNDS - how far the camera may roam, not
+    # BOUNDS, which is the forecast volume. The observed field is the layer
+    # that gives the wide view something to look at, and it is the only one
+    # that can be widened without paying per cell.
     assert (
         DEFAULT_WINDOW.west,
         DEFAULT_WINDOW.south,
         DEFAULT_WINDOW.east,
         DEFAULT_WINDOW.north,
-    ) == (-17.5, 32.3, -16.2, 33.2)
+    ) == (-21.0, 29.6, -12.7, 36.0)
+
+
+def test_default_window_is_wider_than_the_forecast_grid():
+    from ingest.sources.openmeteo_grid import DEFAULT_GRID
+
+    assert DEFAULT_WINDOW.west < DEFAULT_GRID.west
+    assert DEFAULT_WINDOW.east > DEFAULT_GRID.east
+    assert DEFAULT_WINDOW.south < DEFAULT_GRID.south
+    assert DEFAULT_WINDOW.north > DEFAULT_GRID.north
 
 
 # --- listing --------------------------------------------------------------

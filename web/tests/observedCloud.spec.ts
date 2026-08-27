@@ -11,6 +11,7 @@ import {
   type ObservedCloudHeader,
 } from "../lib/observedCloud";
 import { imageCoordinates, rampColour, rgbaFrame } from "../lib/map/ObservedLayer";
+import { RAMP_TOP_M, cloudTopColour } from "../lib/map/cloudTop";
 
 /**
  * The observed field arrives as bare bytes, like the volume, but it carries a
@@ -155,17 +156,37 @@ test("clear sky is fully transparent, not a pale colour", () => {
   expect(rampColour(0)[3]).toBe(0);
 });
 
-test("a higher top is brighter and more opaque than a lower one", () => {
+test("a higher top is more opaque than a lower one", () => {
   const low = rampColour(400);
   const high = rampColour(2000);
   expect(high[3]).toBeGreaterThan(low[3]);
-  expect(high[0] + high[1] + high[2]).toBeGreaterThan(low[0] + low[1] + low[2]);
+});
+
+test("the colour is the heatmap's, so one legend reads both layers", () => {
+  // Not merely "similar": if these two ever drift apart, the legend on screen
+  // is lying about one of the layers it claims to key.
+  for (const metres of [200, 900, 1500, 1800, 1950, 2400]) {
+    expect(rampColour(metres).slice(0, 3)).toEqual(cloudTopColour(metres));
+  }
+});
+
+test("the deck either side of the summits is not one colour", () => {
+  // The failure this replaces: every marine top round Madeira lands between
+  // 600m and 1500m, and the old cyan ramp rendered that whole band as one
+  // shade, so the measured field arrived as a flat blue sheet.
+  const below = rampColour(1100);
+  const above = rampColour(1950);
+  const distance =
+    Math.abs(below[0] - above[0]) +
+    Math.abs(below[1] - above[1]) +
+    Math.abs(below[2] - above[2]);
+  expect(distance).toBeGreaterThan(120);
 });
 
 test("tops above the ramp clamp instead of wrapping to black", () => {
   const colour = rampColour(20000);
   expect(colour[3]).toBeGreaterThan(200);
-  expect(colour.slice(0, 3)).toEqual([255, 255, 255]);
+  expect(colour.slice(0, 3)).toEqual(cloudTopColour(RAMP_TOP_M));
 });
 
 test("a hole is drawn as nothing at all", () => {

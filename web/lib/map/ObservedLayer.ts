@@ -20,52 +20,56 @@ import {
   hourSlice,
   type ObservedCloud,
 } from "@/lib/observedCloud";
+import { cloudTopColour } from "./cloudTop";
 
 export const OBSERVED_SOURCE_ID = "observed-cloud";
 export const OBSERVED_LAYER_ID = "observed-cloud";
 
 /**
- * Altitude stops for the colour ramp, in metres, and the colour at each.
+ * Opacity stops for the observed field, in metres.
  *
- * The ramp is built around the trade-wind inversion rather than spread evenly:
- * everything this product is about happens between 600m and 2000m, and a
- * linear scale to 12km would render that whole band as one indistinguishable
- * shade. Below the deck is warm and dim; the deck itself is the bright cyan
- * the rest of the HUD is drawn in; above it goes white, because that is
- * cirrus and it means something different.
+ * Only the opacity lives here. The *colour* is `cloudTopColour` from
+ * ./cloudTop - the same ramp the heatmap and its legend are drawn from -
+ * because both layers answer the identical question, "how high is the top",
+ * and answering it in two different colour languages on one map is worse than
+ * answering it twice. This layer used to carry its own cyan ramp keyed to the
+ * HUD, and the result was a flat blue sheet: marine stratocumulus round
+ * Madeira tops out between roughly 600m and 1500m, which was exactly the band
+ * that ramp rendered as one bright cyan, so the entire measured field arrived
+ * as a single colour carrying no information at all.
+ *
+ * Opacity still climbs with altitude, which is not decoration: a low top is a
+ * shallow deck you can see terrain through, a high one is a body of cloud that
+ * hides what is under it, and the picture should say so.
  */
-const RAMP: { m: number; rgb: [number, number, number]; alpha: number }[] = [
-  { m: 0, rgb: [120, 140, 160], alpha: 0 },
-  { m: 300, rgb: [110, 160, 190], alpha: 0.35 },
-  { m: 900, rgb: [90, 210, 235], alpha: 0.62 },
-  { m: 1600, rgb: [160, 235, 250], alpha: 0.72 },
-  { m: 3000, rgb: [225, 245, 255], alpha: 0.8 },
-  { m: 8000, rgb: [255, 255, 255], alpha: 0.88 },
+const ALPHA: { m: number; alpha: number }[] = [
+  { m: 0, alpha: 0 },
+  { m: 1, alpha: 0.45 },
+  { m: 900, alpha: 0.62 },
+  { m: 1800, alpha: 0.72 },
+  { m: 3000, alpha: 0.8 },
 ];
 
 export type Rgba = [number, number, number, number];
 
+function alphaFor(topM: number): number {
+  if (topM <= 0) return 0;
+  for (let index = 1; index < ALPHA.length; index++) {
+    const upper = ALPHA[index];
+    if (topM > upper.m) continue;
+    const lower = ALPHA[index - 1];
+    const span = upper.m - lower.m;
+    const weight = span <= 0 ? 0 : (topM - lower.m) / span;
+    return lower.alpha + (upper.alpha - lower.alpha) * weight;
+  }
+  return ALPHA[ALPHA.length - 1].alpha;
+}
+
 /** Colour for one cloud-top altitude, as 8-bit RGBA. */
 export function rampColour(topM: number): Rgba {
   if (topM <= 0) return [0, 0, 0, 0];
-  let lower = RAMP[0];
-  let upper = RAMP[RAMP.length - 1];
-  for (let index = 1; index < RAMP.length; index++) {
-    if (RAMP[index].m >= topM) {
-      lower = RAMP[index - 1];
-      upper = RAMP[index];
-      break;
-    }
-  }
-  const span = upper.m - lower.m;
-  const weight = span <= 0 ? 0 : Math.min(1, Math.max(0, (topM - lower.m) / span));
-  const mix = (a: number, b: number) => Math.round(a + (b - a) * weight);
-  return [
-    mix(lower.rgb[0], upper.rgb[0]),
-    mix(lower.rgb[1], upper.rgb[1]),
-    mix(lower.rgb[2], upper.rgb[2]),
-    Math.round(255 * (lower.alpha + (upper.alpha - lower.alpha) * weight)),
-  ];
+  const [r, g, b] = cloudTopColour(topM);
+  return [r, g, b, Math.round(255 * alphaFor(topM))];
 }
 
 /**

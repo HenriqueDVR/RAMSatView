@@ -209,12 +209,20 @@ def fuse(
 ) -> ObservedCloud:
     """Scans plus profiles to one blob of observed cloud-top altitude.
 
-    Every pixel in an hour is read against the *same* temperature profile. The
-    window is 100km across and the profile that matters here is the lowest two
-    kilometres, which over that distance and over open ocean is as near uniform
-    as makes no difference - and the alternative, a profile per satellite cell,
-    means paying Open-Meteo for temperature on the whole grid to sharpen a
-    number whose error is dominated by the infrared correction anyway.
+    Every pixel in an hour is read against the *same* temperature profile,
+    Madeira's. That was easy to defend when the window was 100km across. It is
+    now the camera box, some 800km by 700km, and it is worth being honest about
+    what that costs: the profile that matters is the lowest two kilometres,
+    which over open ocean in one air mass is near enough uniform, but the far
+    corners of this window are not guaranteed to be in Madeira's air mass. Tops
+    near the islands are as good as they were; tops at the edge are a plausible
+    altitude for a temperature that was really measured, and should be read as
+    context rather than as a number to drive up a mountain on.
+
+    The alternative - a profile per satellite cell - means paying Open-Meteo
+    for temperature across the whole box, which is thousands of grid points a
+    run for a budget that has room for eighty, to sharpen a number whose error
+    is dominated by the infrared correction anyway.
     """
     if not scans:
         raise ValueError("no satellite scans to fuse")

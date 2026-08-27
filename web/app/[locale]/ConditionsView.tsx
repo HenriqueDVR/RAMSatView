@@ -251,7 +251,11 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
         />
       )}
 
-      {layers.heatmap && grid !== null && <CloudTopLegend t={t} />}
+      {/* One legend, two layers: the observed field is drawn from the same
+          altitude ramp as the heatmap, so whichever of them is on, this is
+          the key to it. */}
+      {((layers.heatmap && grid !== null) ||
+        (layers.observed && observed !== null)) && <CloudTopLegend t={t} />}
 
       <Sidebar
         spots={visible}
