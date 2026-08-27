@@ -37,7 +37,7 @@ test("edge samples are left alone so tiles do not open seams", () => {
   expect(despike(heights, 5)[0]).toBe(5000);
 });
 
-test("sea level and everything under it is pushed below the sea plane", () => {
+test("sea level and everything under it is pushed to one constant", () => {
   // 0 is what Terrarium reports for open ocean above zoom 10; -2000 is what
   // it reports for the same water at zoom 10. Both must end up in the same
   // place, or the sea floor changes height as the user zooms.

@@ -83,21 +83,18 @@ export function despike(heights: Float32Array, size: number): Float32Array {
  *
  * Below the sea it is ETOPO-derived and only baked into the low zooms; from
  * z11 up the ocean is simply zero, because those levels come from land
- * elevation datasets. That is not a detail - at the zooms this map actually
- * uses, the sea floor is a flat plateau at exactly 0m, which sits *above* the
- * sea plane and renders as a hard-edged wedge of dark ocean imagery lying on
- * top of the water. Pan across a zoom boundary and tiles swap between real
- * bathymetry and that plateau, which is the flicker.
+ * elevation datasets. That is not a detail - the same patch of water is 2000m
+ * deep on one tile and flat at 0m on its neighbour, so panning across a zoom
+ * boundary makes the sea floor jump. That was the flicker.
  *
- * So: everything at or below sea level is pushed to one constant just beneath
- * the sea plane. Shallow, not deep: the water above it is now transparent in
- * the near field, so the imagery draped on this floor is on screen, and a
- * floor hundreds of metres down would slide the coastline visibly away from
- * where the land meets it at a steep pitch. The sea floor is never drawn - the sea plane hides it either
- * way - and the only thing that matters about it is that it stays hidden at
- * every zoom, which a constant guarantees and the source data does not.
+ * So: everything at or below sea level is pushed to one constant. The value is
+ * shallow because the ocean surface is now this floor with the imagery draped
+ * on it - the sea plane that used to cover it is gone - and a floor tens of
+ * metres down puts a visible step around every coastline. What matters is not
+ * the depth but that it is the *same* depth at every zoom, which a constant
+ * guarantees and the source data does not.
  */
-export const OCEAN_FLOOR_M = -30;
+export const OCEAN_FLOOR_M = -4;
 
 /** Anything at or below this is sea, not shoreline. */
 const SHORE_THRESHOLD_M = 0.5;

@@ -49,7 +49,7 @@ test("selecting a spot restyles the pins instead of rebuilding them", async ({
   });
 
   for (const id of ["pico-arieiro", "pico-ruivo", "pico-arieiro"]) {
-    await page.locator(`#spot-${id} .card-select`).click();
+    await page.locator(`#row-${id}`).click();
     await page.waitForTimeout(500);
   }
 

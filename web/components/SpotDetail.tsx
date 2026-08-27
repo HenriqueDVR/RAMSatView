@@ -12,11 +12,19 @@ import {
   formatLocalDate,
   formatLocalTime,
   type Locale,
+  type Translate,
   type TranslationKey,
 } from "@/lib/i18n";
 
-type T = (key: TranslationKey, vars?: Record<string, string | number>) => string;
-
+/**
+ * Everything known about one spot.
+ *
+ * This is the body that used to be a card in a grid under the map. The grid is
+ * gone: eight cards side by side answered "which of these places" when the
+ * question is "this place, now" - and it pushed the map, which is the actual
+ * product, into a strip at the top of the screen. The same readouts now live
+ * in the sidebar beside the map, for the one spot that is selected.
+ */
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="fact">
@@ -26,18 +34,14 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function SpotCard({
+export default function SpotDetail({
   spot,
   locale,
   t,
-  selected,
-  onSelect,
 }: {
   spot: SpotEntry;
   locale: Locale;
-  t: T;
-  selected?: boolean;
-  onSelect?: (id: string) => void;
+  t: Translate;
 }) {
   const day = spot.days[0];
   if (!day) return null;
@@ -46,28 +50,10 @@ export default function SpotCard({
   const confidence = t("score.confidence");
 
   return (
-    <article
-      className={selected ? "card selected" : "card"}
-      id={`spot-${spot.id}`}
-      aria-current={selected ? "true" : undefined}
-    >
-      <header className="card-head">
-        <h3>
-          {/*
-            The selectable thing is the name, not the whole card. A card-wide
-            click target cannot be reached from a keyboard without either
-            faking a button with role and key handlers or nesting interactive
-            elements inside it, and both are worse than one honest button.
-          */}
-          <button
-            type="button"
-            className="card-select"
-            onClick={() => onSelect?.(spot.id)}
-          >
-            {name}
-          </button>
-        </h3>
-        <p className="card-meta">
+    <article className="spot-detail" id={`spot-${spot.id}`}>
+      <header className="detail-head">
+        <h3>{name}</h3>
+        <p className="detail-meta">
           {formatLocalDate(day.date, locale)}
           {spot.type === "viewpoint" && (
             <>
@@ -89,7 +75,7 @@ export default function SpotCard({
             );
           })()}
 
-          <div className="card-readout">
+          <div className="detail-readout">
             <ScoreDial
               score={day.cloud_sea}
               label={t("score.cloud_sea")}
@@ -137,7 +123,7 @@ export default function SpotCard({
         </>
       ) : (
         <>
-          <div className="card-readout">
+          <div className="detail-readout">
             <ScoreDial
               score={day.score}
               label={t("score.beach")}
@@ -167,7 +153,7 @@ export default function SpotCard({
           </dl>
 
           {worstWarning(day.warnings) && (
-            <p className="card-warning" role="alert">
+            <p className="detail-warning" role="alert">
               {t("warning.official")}
             </p>
           )}

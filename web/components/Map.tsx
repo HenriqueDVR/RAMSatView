@@ -28,10 +28,10 @@ import {
   type ObservedCloud,
 } from "@/lib/observedCloud";
 import { ObservedLayer } from "@/lib/map/ObservedLayer";
-import { SEA_LAYER_ID, SeaLayer } from "@/lib/map/SeaLayer";
+import { CloudTopLayer } from "@/lib/map/CloudTopLayer";
 import { SkyLayer } from "@/lib/map/SkyLayer";
 import { registerCleanDemProtocol } from "@/lib/map/demProtocol";
-import { BOUNDS, CENTRE, DEM_SOURCE_ID } from "@/lib/map/sources";
+import { BOUNDS, CENTRE, DEM_SOURCE_ID, VIEW_BOUNDS } from "@/lib/map/sources";
 import {
   HILLSHADE_FILL_LAYER_ID,
   HILLSHADE_LAYER_ID,
@@ -76,11 +76,17 @@ const VERTICAL_FOV = 48;
 /**
  * Past ~72 degrees the camera starts clipping into the terrain it is standing
  * on, and MapLibre has no collision handling for that: the ground folds up
- * over the view. Below zoom 8.2 the archipelago is a speck; above 15 both the
- * imagery (10m/px) and the DEM run out and the terrain turns to smooth dunes.
+ * over the view. Above zoom 15 both the imagery (10m/px) and the DEM run out
+ * and the terrain turns to smooth dunes.
+ *
+ * The floor was 8.2, chosen when "the archipelago is a speck" was the only
+ * thing zooming out could achieve. With a real sky and a horizon worth looking
+ * at there is something to back off and see, so it goes down to 5.4 -
+ * far enough that Madeira and Porto Santo sit together in an ocean. Anything
+ * lower and the Sentinel mosaic has no tiles.
  */
 const MAX_PITCH = 72;
-const MIN_ZOOM = 8.2;
+const MIN_ZOOM = 5.4;
 const MAX_ZOOM = 15;
 const DEFAULT_BEARING = 72;
 // Close enough that the massif has presence and the dawn sky is in frame.
@@ -225,8 +231,8 @@ export default function MapView({
   const container = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const deck = useRef<CloudDeckLayer | null>(null);
-  const sea = useRef<SeaLayer | null>(null);
   const observedLayer = useRef<ObservedLayer | null>(null);
+  const heatmap = useRef<CloudTopLayer | null>(null);
   const sky = useRef<SkyLayer | null>(null);
   // Once the DEM has failed there is nothing for the terrain switch to turn
   // back on, and asking for it again would put the broken globe back.
@@ -271,9 +277,12 @@ export default function MapView({
       maxPitch: MAX_PITCH,
       minZoom: MIN_ZOOM,
       maxZoom: MAX_ZOOM,
+      // The camera's box, not the data's: MapLibre fits maxBounds inside the
+      // viewport, so clamping this to BOUNDS also clamped how far out anyone
+      // could zoom. See VIEW_BOUNDS in lib/map/sources.ts.
       maxBounds: [
-        [BOUNDS[0], BOUNDS[1]],
-        [BOUNDS[2], BOUNDS[3]],
+        [VIEW_BOUNDS[0], VIEW_BOUNDS[1]],
+        [VIEW_BOUNDS[2], VIEW_BOUNDS[3]],
       ],
       attributionControl: { compact: true },
     });
@@ -304,15 +313,17 @@ export default function MapView({
       const dome = new SkyLayer();
       sky.current = dome;
       instance.addLayer(dome, SATELLITE_LAYER_ID);
-      // The sea goes in next: it must occlude the bathymetry before anything
-      // translucent is blended over it.
-      const water = new SeaLayer(!prefersReducedMotion());
-      sea.current = water;
-      instance.addLayer(water);
       instance.addLayer(layer);
-      // Under the sea plane and the deck, over the basemap: a flat picture of
-      // the sky belongs behind the two bodies that have real geometry.
-      observedLayer.current = new ObservedLayer(instance, SEA_LAYER_ID);
+      // Over the basemap and the hillshade, under the forecast volume: a flat
+      // picture of the sky belongs behind the one body with real geometry.
+      // There is no beforeId because the deck is a custom layer and the
+      // observed raster is not - style layers are drawn before custom ones
+      // whatever order they were added in.
+      observedLayer.current = new ObservedLayer(instance);
+      // Last, so it is on top of the style stack: a draped raster follows the
+      // terrain, and the whole point of it is to read the altitude off the
+      // ridges rather than off a sheet floating over them.
+      heatmap.current = new CloudTopLayer(instance);
       layer.setProfile(activeProfile(spots, selectedId));
     });
 
@@ -329,10 +340,6 @@ export default function MapView({
       for (const id of [HILLSHADE_LAYER_ID, HILLSHADE_FILL_LAYER_ID]) {
         if (instance.getLayer(id)) instance.removeLayer(id);
       }
-      // Without terrain the raster layers are drawn flat at zero, which is
-      // exactly where the sea plane sits - and being a depth-writing 3D layer
-      // it would win, leaving the user staring at an empty blue rectangle.
-      if (instance.getLayer(SEA_LAYER_ID)) instance.removeLayer(SEA_LAYER_ID);
       instance.easeTo({ pitch: 0 });
     };
     instance.on("error", onError);
@@ -345,9 +352,9 @@ export default function MapView({
       instance.remove();
       map.current = null;
       deck.current = null;
-      sea.current = null;
       sky.current = null;
       observedLayer.current = null;
+      heatmap.current = null;
       pins.clear();
     };
     // Mount only. The deck and markers are kept current by the effects below.
@@ -372,6 +379,16 @@ export default function MapView({
     );
     layer.setProfile(envelopeProfile(grid, timeIndex));
   }, [profile, grid, timeIndex]);
+
+  // The heatmap reads the same volume and the same hour as the deck, which is
+  // what lets the two be alternatives rather than two different forecasts.
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance) return;
+    return whenStyleReady(instance, () => {
+      heatmap.current?.setFrame(grid, timeIndex);
+    });
+  }, [grid, timeIndex]);
 
   // The observed field is matched to the scene's instant rather than to the
   // volume's hour index: the two axes are published by different sources over
@@ -399,11 +416,11 @@ export default function MapView({
     const instance = map.current;
     if (!instance) return;
     const vector = sunVector(sun);
+    const palette = skyPalette(sun.elevation);
     const apply = () => {
       applyLighting(instance, sun);
       deck.current?.setSun(vector, sun.elevation);
-      sea.current?.setSun(vector, sun.elevation);
-      sky.current?.setSun(vector, sun.elevation, skyPalette(sun.elevation));
+      sky.current?.setSun(vector, sun.elevation, palette);
     };
     return whenStyleReady(instance, apply);
   }, [sun]);
@@ -431,19 +448,18 @@ export default function MapView({
         );
       }
       deck.current?.setVisible(layers.cloud);
+      // Only with a volume behind it: with no grid there is no cloud top to
+      // colour, and an empty raster over the island says "clear" when what is
+      // true is "not published".
+      heatmap.current?.setVisible(layers.heatmap && grid !== null);
       // Only ever visible when there is an hour to show: outside the observed
       // window there is nothing measured, and the switch must not resurrect
       // the last frame that was.
       observedLayer.current?.setVisible(layers.observed && observedIndex !== null);
-      // The sea plane is drawn at -2m and writes depth. With the terrain off,
-      // every raster is flat at zero and the plane wins the depth test over
-      // the whole map - an empty blue rectangle. So it follows the terrain
-      // switch whatever the sea switch says.
-      sea.current?.setVisible(layers.sea && layers.terrain && !demFailed.current);
     };
 
     return whenStyleReady(instance, apply);
-  }, [layers, observedIndex]);
+  }, [layers, observedIndex, grid]);
 
   useEffect(() => {
     const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");

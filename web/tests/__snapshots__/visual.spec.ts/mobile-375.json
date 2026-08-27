@@ -23,7 +23,7 @@
         "width": 104,
         "overflowsRight": false
       },
-      "#spot-pico-arieiro .card-readout": {
+      "#spot-pico-arieiro .detail-readout": {
         "left": 33,
         "width": 309,
         "overflowsRight": false
@@ -39,7 +39,7 @@
         "width": 343,
         "overflowsRight": false
       },
-      ".cards": {
+      ".sidebar": {
         "left": 16,
         "width": 343,
         "overflowsRight": false

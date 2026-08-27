@@ -97,11 +97,50 @@ test("a truncated volume is refused and the page carries on without it", async (
   await waitForMap(page);
 
   // No control, because there is no trustworthy volume behind it - but the
-  // map, the cards and the scores are all still there.
+  // map, the sidebar and the scores are all still there.
   await expect(page.locator(".scrubber")).toHaveCount(0);
   await expect(page.locator(".map canvas")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Pico do Arieiro", exact: true })
+    page.getByRole("button", { name: /Pico do Arieiro/ }).first()
   ).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("the heatmap and the volumetric cloud are alternatives", async ({
+  page,
+}) => {
+  // Served with a volume: with no grid published there is no cloud top to
+  // colour, and the switch deliberately does nothing.
+  await serve(page);
+  await page.goto("/en/");
+  await waitForMap(page);
+  await page.getByRole("button", { name: /layers/i }).click();
+
+  const cloud = page.getByRole("checkbox", { name: "Cloud", exact: true });
+  const heatmap = page.getByRole("checkbox", { name: "Cloud-top altitude" });
+  await expect(cloud).toBeChecked();
+  await expect(heatmap).not.toBeChecked();
+
+  // They are the same field drawn two ways, so switching one on has to switch
+  // the other off - on screen together they only obscure each other.
+  await heatmap.check();
+  await expect(cloud).not.toBeChecked();
+  await expect(
+    page.locator(".legend"),
+    "the legend appears with the layer it explains"
+  ).toBeVisible();
+  await expect(
+    page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __satappMap: { getLayer(id: string): unknown };
+          }
+        ).__satappMap.getLayer("cloud-top") !== undefined
+    )
+  ).resolves.toBe(true);
+
+  await cloud.check();
+  await expect(heatmap).not.toBeChecked();
+  await expect(page.locator(".legend")).toHaveCount(0);
 });

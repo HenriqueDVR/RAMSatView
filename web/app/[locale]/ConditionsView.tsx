@@ -4,7 +4,8 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import LayerPanel from "@/components/LayerPanel";
 import TimeScrubber from "@/components/TimeScrubber";
-import SpotCard from "@/components/SpotCard";
+import Sidebar from "@/components/Sidebar";
+import CloudTopLegend from "@/components/CloudTopLegend";
 import StatusBar from "@/components/StatusBar";
 import {
   conditionsUrl,
@@ -25,7 +26,12 @@ import {
 } from "@/lib/observedCloud";
 import { nearestIndex } from "@/lib/timeline";
 import { translator, type Locale } from "@/lib/i18n";
-import { DEFAULT_LAYERS, type LayerKey, type LayerState } from "@/lib/layers";
+import {
+  DEFAULT_LAYERS,
+  exclusiveLayers,
+  type LayerKey,
+  type LayerState,
+} from "@/lib/layers";
 
 // MapLibre touches window at import time and is by far the heaviest dependency
 // on the page (~200KB gzipped), so it is client-only and lazily loaded. The
@@ -72,7 +78,10 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
   const [hour, setHour] = useState<number | null>(null);
 
   const setLayer = useCallback((key: LayerKey, value: boolean) => {
-    setLayers((current) => ({ ...current, [key]: value }));
+    // Through exclusiveLayers rather than a plain spread: the volumetric deck
+    // and the cloud-top heatmap are the same field drawn two ways and only one
+    // of them can be on.
+    setLayers((current) => exclusiveLayers(current, key, value));
   }, []);
 
   useEffect(() => {
@@ -242,18 +251,15 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
         />
       )}
 
-      <section className="cards">
-        {visible.map((spot) => (
-          <SpotCard
-            key={spot.id}
-            spot={spot}
-            locale={locale}
-            t={t}
-            selected={spot.id === selectedId}
-            onSelect={setSelectedId}
-          />
-        ))}
-      </section>
+      {layers.heatmap && grid !== null && <CloudTopLegend t={t} />}
+
+      <Sidebar
+        spots={visible}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        locale={locale}
+        t={t}
+      />
 
       <footer className="attribution">
         <p>

@@ -8,8 +8,8 @@ import type { Translate, TranslationKey } from "@/lib/i18n";
 const LABEL: Record<LayerKey, TranslationKey> = {
   satellite: "layers.satellite",
   terrain: "layers.terrain",
-  sea: "layers.sea",
   cloud: "layers.cloud",
+  heatmap: "layers.heatmap",
   observed: "layers.observed",
 };
 

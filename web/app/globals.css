@@ -309,30 +309,113 @@ body {
   }
 }
 
-/* --- cards --- */
+/* --- sidebar --- */
 
-.cards {
-  display: grid;
-  gap: var(--s-4);
+/*
+ * What used to be a grid of cards under the map.
+ *
+ * The grid is gone on purpose: eight equal cards said every spot was equally
+ * the answer, and on a wide screen they pushed the map into a band at the top.
+ * A list plus one detail says which spot, and leaves the map the viewport.
+ */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
   margin-top: var(--s-5);
-  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
 }
 
-.card {
+.spot-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.spot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+.spot-row:hover {
+  background: rgb(120 165 220 / 0.1);
+}
+
+.spot-row.selected {
+  border-color: var(--accent);
+  background: rgb(120 165 220 / 0.14);
+}
+
+/* Tabular and fixed-width so the names line up whatever the scores are. */
+.spot-score {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  font: 650 var(--t-sm) / 1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.score-good {
+  color: var(--good);
+}
+
+.score-fair {
+  color: var(--mixed);
+}
+
+.score-poor {
+  color: var(--poor);
+}
+
+.score-none {
+  color: var(--muted);
+}
+
+.spot-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.spot-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spot-sub {
+  font-size: var(--t-xs);
+  color: var(--muted);
+}
+
+.spot-detail {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   padding: var(--s-4);
-  transition: border-color var(--dur-2) var(--ease),
-    box-shadow var(--dur-2) var(--ease);
 }
 
-.card.selected {
-  border-color: var(--accent);
-  box-shadow: var(--e-2);
-}
-
-.card-head {
+.detail-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -340,23 +423,13 @@ body {
   gap: var(--s-2);
 }
 
-.card h3 {
+.spot-detail h3 {
   margin: 0;
   font-size: var(--t-lg);
   letter-spacing: -0.01em;
 }
 
-.card-select {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.card-meta {
+.detail-meta {
   margin: 0;
   font-size: var(--t-sm);
   color: var(--muted);
@@ -386,7 +459,7 @@ body {
   color: var(--muted);
 }
 
-.card-readout {
+.detail-readout {
   display: flex;
   align-items: center;
   gap: var(--s-4);
@@ -513,7 +586,7 @@ body {
   margin-top: var(--s-1);
 }
 
-.card-warning {
+.detail-warning {
   margin: var(--s-3) 0 0;
   color: var(--poor);
   font-weight: 600;
@@ -553,7 +626,7 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .card-readout {
+  .detail-readout {
     gap: var(--s-3);
   }
 }
@@ -847,13 +920,24 @@ body {
 /* --- desktop: the map is the page --- */
 
 @media (min-width: 1024px) {
+  /* One column, exactly one viewport tall, and it does not scroll.
+     The HUD panels are flex items in it: the masthead, the status bar and the
+     tabs take the height they need, and the sidebar takes what is left. That
+     is the whole reason this is a flex column rather than a stack of fixed
+     panels at typed-in offsets - the masthead is two lines in English and can
+     be three in Portuguese, and a sidebar pinned at a guessed `top` lands on
+     top of the tabs and eats their clicks. It did exactly that. */
   .page {
     max-width: none;
     padding: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
   }
 
   /* Fixed rather than sticky: the map is the ground the readouts stand on, and
-     it should not move at all when the cards below are scrolled. */
+     nothing above it moves. */
   .stage {
     position: fixed;
     inset: 0;
@@ -869,7 +953,8 @@ body {
   .masthead,
   .statusbar,
   .tabs,
-  .cards,
+  .sidebar,
+  .legend,
   .attribution,
   .disclaimer,
   .state {
@@ -918,10 +1003,60 @@ body {
     border-color: var(--hud-line);
   }
 
-  /* The cards start below the fold on purpose: the map answers the question,
-     and the numbers are what you scroll to when you want to argue with it. */
-  .cards {
-    margin: 64vh var(--s-4) var(--s-4);
+  /* The sidebar is a fixed column beside the map rather than a block under
+     it. Nothing on this screen scrolls the page any more: the map is the
+     ground, and the readouts are instruments standing on it. The column
+     scrolls inside itself when the list plus the detail is taller than the
+     space between the tabs and the scrubber. */
+  .sidebar {
+    /* Takes whatever height the panels above it left, and scrolls inside
+       itself rather than growing past the bottom of the screen. min-height: 0
+       is load-bearing: without it a flex item refuses to shrink below its
+       content and the column overflows instead of the panel scrolling. */
+    flex: 1 1 auto;
+    min-height: 0;
+    width: min(24rem, 34vw);
+    margin: var(--s-3) var(--s-4) 0;
+    padding: var(--s-4);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--hud-bg);
+    backdrop-filter: var(--hud-blur);
+    -webkit-backdrop-filter: var(--hud-blur);
+    border: 1px solid var(--hud-line);
+    border-radius: var(--r-md);
+    box-shadow: var(--e-2), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  }
+
+  /* Transparent inside the glass: two panels nested inside each other read as
+     a widget in a box rather than as one instrument. */
+  .spot-detail {
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--hud-line);
+    border-radius: 0;
+    padding: var(--s-3) 0 0;
+  }
+
+  /* The licence line stays in the column, under the sidebar: it is two lines
+     of small print and it belongs with the panel whose imagery it credits.
+     Kept out of the sidebar's own scroll so it cannot be scrolled away - EOX's
+     CC BY-NC-SA is a condition of using the tiles at all. */
+  .attribution {
+    flex: none;
+    width: min(24rem, 34vw);
+    margin: var(--s-3) var(--s-4) 0;
+  }
+
+  /* The safety notice goes to the opposite corner rather than into the column.
+     As a flex item it competed with the sidebar for height and won - a
+     140-pixel block of legal text left the spot list about two rows tall. */
+  .disclaimer {
+    position: fixed;
+    right: var(--s-4);
+    bottom: 140px;
+    width: min(26rem, 32vw);
+    margin: 0;
   }
 
   .attribution,
@@ -948,19 +1083,21 @@ body {
      at 64vh where the cards start and scrolls away from the picture. */
   .scrubber {
     position: fixed;
-    left: 50%;
-    bottom: var(--s-4);
-    transform: translateX(-50%);
-    width: min(52rem, calc(100vw - 2 * var(--s-4)));
+    /* Starts where the sidebar ends rather than being centred on the window:
+       centred, its left edge ran under the sidebar column at 1024px. */
+    left: calc(min(24rem, 34vw) + 2 * var(--s-4));
+    right: var(--s-4);
+    bottom: var(--s-3);
+    max-width: 52rem;
     margin: 0;
   }
 
   /* Attribution is a licence condition, not decoration - EOX's imagery is CC
-     BY-NC-SA. The cards scroll up over the bottom of the map, so it is lifted
-     to sit just above where they start. */
+     BY-NC-SA. Lifted clear of the scrubber, which is pinned to the bottom of
+     the viewport. */
   .maplibregl-ctrl-bottom-right,
   .maplibregl-ctrl-bottom-left {
-    bottom: calc(36vh + var(--s-2));
+    bottom: 96px;
   }
 }
 
@@ -971,6 +1108,79 @@ body {
   }
 }
 
+
+/* --- cloud-top legend --- */
+
+/*
+ * Only on screen while the heatmap is, and marked with the two summits rather
+ * than with round numbers: "the colour where the deck crosses Arieiro" is the
+ * thing being looked for, and 1800 m is not that sentence.
+ */
+.legend {
+  margin: var(--s-3) 0 0;
+  padding: var(--s-3);
+  width: max-content;
+}
+
+.legend figcaption {
+  font: 600 var(--t-xs) / 1 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: var(--s-2);
+}
+
+.legend-body {
+  display: flex;
+  gap: var(--s-3);
+}
+
+.legend-bar {
+  position: relative;
+  width: 12px;
+  height: 132px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hud-line);
+}
+
+.legend-mark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid rgb(255 255 255 / 0.85);
+}
+
+.legend-mark-label {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: -0.6em;
+  white-space: nowrap;
+  font-size: var(--t-xs);
+  color: var(--fg);
+}
+
+.legend-scale {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 1024px) {
+  /* A flex item in the HUD column, directly under the layer panel whose
+     switch it explains, and above the sidebar - which then simply gets less
+     height. Pinned to a corner instead, it landed on the licence text. */
+  .legend {
+    flex: none;
+    margin: var(--s-3) var(--s-4) 0;
+  }
+}
 
 /* --- MapLibre's own furniture, wearing the HUD --- */
 

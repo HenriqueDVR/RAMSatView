@@ -14,7 +14,12 @@
 
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { SunPosition } from "@/lib/sun";
-import { HILLSHADE_FILL_LAYER_ID, HILLSHADE_LAYER_ID } from "./style";
+import {
+  HILLSHADE_FILL_LAYER_ID,
+  HILLSHADE_LAYER_ID,
+  SATELLITE_LAYER_ID,
+} from "./style";
+import { highlightGain, imageryPaint } from "./exposure";
 
 type Rgb = [number, number, number];
 
@@ -122,6 +127,19 @@ export function skyPalette(elevationDegrees: number): SkyPalette {
   return KEYFRAMES[KEYFRAMES.length - 1].palette;
 }
 
+/**
+ * The colour everything arrives at on the horizon.
+ *
+ * Half fog, half the warm horizon: pure fog is too cold to sit under a dawn
+ * sky, and pure horizon is the painted stripe. Every surface that reaches the
+ * skyline uses this one value - the custom sky hazes into it, MapLibre's own
+ * horizon band is painted with it, and distant terrain fogs towards it - which
+ * is what makes the horizon a transition rather than an edge.
+ */
+export function hazeColour(palette: SkyPalette): Rgb {
+  return mix(palette.fog, palette.horizon, 0.5);
+}
+
 export function css(colour: Rgb): string {
   const channel = (value: number) =>
     Math.round(Math.min(1, Math.max(0, value)) * 255);
@@ -149,21 +167,59 @@ export function daylight(elevationDegrees: number): number {
 export function applyLighting(map: MapLibreMap, sun: SunPosition): void {
   const palette = skyPalette(sun.elevation);
   const light = daylight(sun.elevation);
+  const haze = hazeColour(palette);
 
   map.setSky({
     "sky-color": css(palette.zenith),
-    "horizon-color": css(palette.horizon),
-    "fog-color": css(palette.fog),
-    // Aerial perspective: distant ridges wash towards the fog colour while
-    // near ones keep their contrast. Most of the depth in the scene is this.
+    // Both of these are the haze colour, and that is the fix for the hard line
+    // across the view.
+    //
+    // SkyLayer draws the real sky per pixel, but MapLibre still runs its own
+    // sky pass afterwards and paints a band across the horizon - flat all the
+    // way round the compass, over the top of the custom layer. Whatever colour
+    // that band is, it meets the custom sky at a straight edge: it was the
+    // warm horizon colour, so it read as an orange stripe at dawn and a white
+    // one at noon. Painting it the same colour SkyLayer hazes towards makes
+    // the join invisible instead of trying to hide the band.
+    "horizon-color": css(haze),
+    "fog-color": css(haze),
+    // Aerial perspective: distant ridges wash towards the haze while near ones
+    // keep their contrast. Most of the depth in the scene is this.
     "fog-ground-blend": 0.72,
-    "horizon-fog-blend": 0.62,
+    // Fog only, no second colour blended into it - one colour at the horizon
+    // is the whole point.
+    "horizon-fog-blend": 1,
     // The default 0.8 stops blending the horizon colour partway up the sky,
-    // and at a 71-degree pitch the sky is a thin strip at the top of the
-    // frame - so the whole gradient collapsed into one hard band.
+    // which put a second edge in the gradient.
     "sky-horizon-blend": 1,
     "atmosphere-blend": 0.8,
   });
+
+  if (map.getLayer(SATELLITE_LAYER_ID)) {
+    // Sentinel-2 is a cloud-free median composite of midday scenes, so the
+    // imagery already contains a full noon exposure of its own. Drawn at full
+    // brightness under a midday sun that reads as wet rock: the ground goes
+    // pale, the greens wash out, and the island looks lacquered. So the
+    // exposure comes *down* as the sun comes up - the light in the scene is
+    // already in the pixels, and adding more of it is what looked like a
+    // reflection.
+    const exposure = imageryPaint(light);
+    map.setPaintProperty(
+      SATELLITE_LAYER_ID,
+      "raster-brightness-max",
+      exposure.brightnessMax
+    );
+    // Contrast is what pulls the laurisilva and the bare ridges apart, and a
+    // bright scene needs less of it than a dim one. Median composites are also
+    // over-saturated for a landscape, and midday is where that reads as a
+    // postcard rather than as a place.
+    map.setPaintProperty(SATELLITE_LAYER_ID, "raster-contrast", exposure.contrast);
+    map.setPaintProperty(
+      SATELLITE_LAYER_ID,
+      "raster-saturation",
+      exposure.saturation
+    );
+  }
 
   if (map.getLayer(HILLSHADE_LAYER_ID)) {
     // The key light. Kept a few degrees above the true elevation when the sun
@@ -179,19 +235,26 @@ export function applyLighting(map: MapLibreMap, sun: SunPosition): void {
       "hillshade-illumination-altitude",
       Math.max(6, Math.min(85, sun.elevation))
     );
+    // The highlight is the other half of the shine. At dawn the sun colour is
+    // deep orange and a strong highlight is the point; by midday it is white,
+    // and a white highlight over already-bright imagery is a specular sheen on
+    // what should be rock and laurel. So its strength falls off as the light
+    // rises, which leaves the warmth where it belongs and takes the gloss out
+    // of noon.
+    const gain = highlightGain(light);
     map.setPaintProperty(
       HILLSHADE_LAYER_ID,
       "hillshade-highlight-color",
       css([
-        0.35 + 0.65 * palette.sun[0],
-        0.35 + 0.6 * palette.sun[1],
-        0.35 + 0.55 * palette.sun[2],
+        0.3 + gain * palette.sun[0],
+        0.3 + gain * 0.94 * palette.sun[1],
+        0.3 + gain * 0.86 * palette.sun[2],
       ])
     );
     map.setPaintProperty(
       HILLSHADE_LAYER_ID,
       "hillshade-exaggeration",
-      0.35 + 0.35 * light
+      0.38 + 0.14 * light
     );
   }
 

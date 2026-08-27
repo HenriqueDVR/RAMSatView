@@ -74,7 +74,9 @@ export function buildStyle(licence?: ImageryLicence): StyleSpecification {
         paint: {
           // Sentinel-2 mosaics are shot at midday. Darkened and cooled a
           // little so the terrain does not look like noon under a dawn sky.
-          "raster-brightness-max": 1.0,
+          // Only the first frame's value: lighting.ts re-exposes this for the
+          // displayed hour, and takes it further down the higher the sun is.
+          "raster-brightness-max": 0.96,
           // Lifts the deepest shadows off pure black. Sentinel-2 over
           // laurisilva is nearly black to begin with and two hillshade layers
           // multiply it further; without this the north side of the island is

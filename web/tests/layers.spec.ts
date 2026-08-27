@@ -98,11 +98,13 @@ test("the toggles leave no console errors behind", async ({ page }) => {
   await page.goto("/en/");
   await waitForMap(page);
   await openPanel(page);
-  for (const name of ["Cloud", "Sea", "Satellite", "3D terrain"]) {
-    await page.getByRole("checkbox", { name }).uncheck();
+  // Exact: "Cloud" is a prefix of "Cloud-top altitude", and a substring match
+  // now resolves to two checkboxes.
+  for (const name of ["Cloud", "Satellite", "3D terrain"]) {
+    await page.getByRole("checkbox", { name, exact: true }).uncheck();
   }
-  for (const name of ["Cloud", "Sea", "Satellite", "3D terrain"]) {
-    await page.getByRole("checkbox", { name }).check();
+  for (const name of ["Cloud", "Satellite", "3D terrain"]) {
+    await page.getByRole("checkbox", { name, exact: true }).check();
   }
   await page.waitForTimeout(2_000);
   expect(errors).toEqual([]);

@@ -46,23 +46,27 @@ test.describe("structure", () => {
     test.skip(test.info().project.name !== "desktop", "desktop project only");
   });
 
-  test("viewpoint card", async ({ page }) => {
+  test("viewpoint detail", async ({ page }) => {
     await withFixture(page);
     await page.goto("/en");
+    // The sidebar shows one spot at a time now, so the snapshot has to say
+    // which - the list order is the score order and that moves with the data.
+    await page.locator("#row-pico-arieiro").click();
     await page.waitForSelector("#spot-pico-arieiro");
     expect(await markup(page, "#spot-pico-arieiro")).toMatchSnapshot(
-      "viewpoint-card.html"
+      "viewpoint-detail.html"
     );
   });
 
-  test("beach card", async ({ page }) => {
+  test("beach detail", async ({ page }) => {
     await withFixture(page);
     await page.goto("/en");
     // Beaches are a separate tab; the viewpoint list is what loads first.
     await page.getByRole("tab", { name: "Beaches" }).click();
+    await page.locator("#row-porto-santo-beach").click();
     await page.waitForSelector("#spot-porto-santo-beach");
     expect(await markup(page, "#spot-porto-santo-beach")).toMatchSnapshot(
-      "beach-card.html"
+      "beach-detail.html"
     );
   });
 
@@ -117,6 +121,7 @@ test("375px lays out in one column with nothing off-screen", async ({ page }) =>
   await withFixture(page);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/en");
+  await page.locator("#row-pico-arieiro").click();
   await page.waitForSelector("#spot-pico-arieiro");
 
   const boxes = (selectors: string[]) =>
@@ -146,11 +151,12 @@ test("375px lays out in one column with nothing off-screen", async ({ page }) =>
     "#spot-pico-arieiro",
     "#spot-pico-arieiro .profile",
     "#spot-pico-arieiro .dial",
-    "#spot-pico-arieiro .card-readout",
+    "#spot-pico-arieiro .detail-readout",
   ]);
   await page.getByRole("tab", { name: "Beaches" }).click();
+  await page.locator("#row-porto-santo-beach").click();
   await page.waitForSelector("#spot-porto-santo-beach");
-  const beach = await boxes(["#spot-porto-santo-beach", ".cards"]);
+  const beach = await boxes(["#spot-porto-santo-beach", ".sidebar"]);
 
   for (const measured of [viewpoint, beach]) {
     expect(measured.documentOverflow).toBeLessThanOrEqual(0);
@@ -161,15 +167,15 @@ test("375px lays out in one column with nothing off-screen", async ({ page }) =>
       );
     }
   }
-  // The dial and the profile share a row inside the card, by design. What
+  // The dial and the profile share a row inside the detail panel, by design. What
   // must hold at 375px is that the row fits: a profile wider than the readout
   // is how that row breaks, and it clips the chart rather than wrapping.
-  const readout = viewpoint.boxes["#spot-pico-arieiro .card-readout"]!;
+  const readout = viewpoint.boxes["#spot-pico-arieiro .detail-readout"]!;
   const profile = viewpoint.boxes["#spot-pico-arieiro .profile"]!;
   const dial = viewpoint.boxes["#spot-pico-arieiro .dial"]!;
   expect(profile.width).toBeGreaterThan(0);
   expect(profile.width + dial.width).toBeLessThanOrEqual(readout.width);
-  // One column: the beach card starts where the viewpoint card does.
+  // One column: the beach detail starts where the viewpoint detail does.
   expect(beach.boxes["#spot-porto-santo-beach"]!.left).toBe(
     viewpoint.boxes["#spot-pico-arieiro"]!.left
   );

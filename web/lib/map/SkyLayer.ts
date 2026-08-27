@@ -23,7 +23,7 @@ import type {
   CustomRenderMethodInput,
   Map as MapLibreMap,
 } from "maplibre-gl";
-import type { SkyPalette } from "./lighting";
+import { hazeColour, type SkyPalette } from "./lighting";
 
 export const SKY_LAYER_ID = "sky-dome";
 
@@ -53,6 +53,7 @@ uniform float u_sun_elevation;
 uniform vec3 u_zenith;
 uniform vec3 u_horizon;
 uniform vec3 u_horizon_away;
+uniform vec3 u_fog;
 uniform vec3 u_sun_colour;
 
 out vec4 fragColor;
@@ -83,6 +84,35 @@ void main() {
   float up = clamp(height, 0.0, 1.0);
   vec3 colour = mix(horizon, u_zenith, pow(up, 0.42));
 
+  // Haze, and the fix for the drawn-on line where the world ends.
+  //
+  // MapLibre fogs distant terrain towards the fog colour and the sea fades to
+  // the same colour with distance, but the sky arrived at the horizon on its
+  // own gradient - so the two met at a value they did not share and the join
+  // read as a stroke. Pulling the sky into the fog colour over the few degrees
+  // either side of the horizon means everything that meets there is already
+  // the same colour, which is what distance actually looks like.
+  // Haze, and the fix for the drawn-on line where the world ends.
+  //
+  // Everything that reaches the skyline arrives at u_fog: this sky hazes into
+  // it, MapLibre's own horizon band is painted with it, and distant terrain
+  // fogs towards it. Reaching it outright rather than part of the way is what
+  // makes the join invisible - anything less leaves a step at the exact pixel
+  // where one surface hands over to the next.
+  // The ramp is deliberately wide - full haze from the horizon up to about
+  // seventeen degrees - and not a tight band around height zero. Two reasons.
+  // Real haze is genuinely deep: the first ten degrees above the sea carry
+  // most of the atmosphere you look through. And this shader's horizon is the
+  // geometric one, ray.z == 0, while the horizon MapLibre draws is lower by
+  // the dip angle of a camera that is kilometres up - so a tight band lands in
+  // the wrong place and leaves a strip of clear sky above the fogged one,
+  // which is a line again.
+  // Reaches 1.0 at the horizon, not 0.92: the band below is that colour
+  // outright, and the last eight per cent of blue sky left in the pixel above
+  // it was still enough to see as a line.
+  float haze = 1.0 - smoothstep(0.0, 0.30, max(height, 0.0));
+  colour = mix(colour, u_fog, haze);
+
   // The glow, and the only reason this layer exists: it is centred on the sun
   // and falls off with angle, so the east is alight while the west is still
   // night. Two lobes - a tight one for the flare near the sun and a wide one
@@ -92,20 +122,36 @@ void main() {
   float wide = pow(toSun, 6.0);
   // Fades out as the sun sinks: at -10 degrees there is no glow left to see.
   float twilight = smoothstep(-10.0, 2.0, u_sun_elevation);
-  colour += u_sun_colour * (wide * 0.30 + tight * 1.6) * twilight;
+  // Faded out by the haze rather than added on top of it. Thick air near the
+  // horizon is exactly what hides a low sun's glare, and leaving the glow at
+  // full strength put a bright wedge above the skyline that ended at the same
+  // straight edge the band did - the seam moved rather than closing.
+  float clarity = 1.0 - haze;
+  colour += u_sun_colour * (wide * 0.30 + tight * 1.6) * twilight * clarity;
 
   // The sun itself, half a degree across, once it is actually up. Softened at
   // the limb because a hard-edged disc on a 1-pixel boundary aliases badly.
   if (u_sun_elevation > -0.4) {
     float disc = smoothstep(0.99987, 0.99996, toSun);
-    colour += u_sun_colour * disc * 6.0;
+    // Dimmed in the haze like everything else, or a sun sitting on the horizon
+    // is a hard white dot on a soft gradient.
+    colour += u_sun_colour * disc * 6.0 * (0.25 + 0.75 * clarity);
   }
 
-  // Below the horizon line the ray is looking at ground the terrain mesh does
-  // not reach - open ocean past the DEM's edge. Darkening into the horizon
-  // colour is what makes that read as distance rather than as a hole.
-  float below = smoothstep(0.0, -0.06, height);
-  colour = mix(colour, horizon * 0.45, below);
+  // Below the horizon line the ray is looking at water the terrain mesh does
+  // not reach - open ocean past the DEM's edge. It darkens, because sea seen
+  // at a grazing angle is darker than the sky above it, but it darkens *the
+  // colour that is already there* rather than crossfading to a second colour
+  // of its own. That is what keeps it continuous at the skyline: at height 0
+  // this contributes nothing at all, and it only reaches full strength twelve
+  // degrees down.
+  // Starts three degrees *under* the geometric horizon, not at it. A camera a
+  // few kilometres up sees a horizon dipped below ray.z == 0, and MapLibre
+  // draws its band down there; starting the darkening at zero therefore shaded
+  // exactly the strip between the two, which read as a line even though both
+  // ends of it were the same colour.
+  float below = smoothstep(-0.05, -0.30, height);
+  colour *= 1.0 - 0.55 * below;
 
   fragColor = vec4(colour, 1.0);
 }`;
@@ -173,6 +219,7 @@ export class SkyLayer implements CustomLayerInterface {
       "u_zenith",
       "u_horizon",
       "u_horizon_away",
+      "u_fog",
       "u_sun_colour",
     ]) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
@@ -262,6 +309,10 @@ export class SkyLayer implements CustomLayerInterface {
       away[1] + (warm[1] - away[1]) * 0.26,
       away[2] + (warm[2] - away[2]) * 0.4
     );
+    // The shared haze colour, not the raw fog colour: this has to be the exact
+    // value MapLibre paints its own horizon band with, or the two meet at a
+    // visible edge however soft each side is on its own. See hazeColour().
+    gl.uniform3f(this.uniforms.u_fog, ...hazeColour(this.palette));
     gl.uniform3f(this.uniforms.u_sun_colour, ...this.palette.sun);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);

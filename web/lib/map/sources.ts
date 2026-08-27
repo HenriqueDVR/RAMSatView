@@ -91,9 +91,28 @@ export function demSource(): RasterDEMSourceSpecification {
   };
 }
 
-/** Archipelago bounds. The map cannot be panned off into the Atlantic. */
+/**
+ * Archipelago bounds: the box the *data* covers.
+ *
+ * The cloud volume is gridded over exactly this, and the deck's quads span it,
+ * so it is a statement about the forecast and not about the camera.
+ */
 export const BOUNDS: [number, number, number, number] = [
   -17.5, 32.3, -16.2, 33.2,
+];
+
+/**
+ * How far the camera may roam, which is a much bigger box than the data.
+ *
+ * These used to be the same value, and it made the map feel boxed in: MapLibre
+ * fits `maxBounds` inside the viewport, so a box the size of the archipelago
+ * also imposed a floor on zooming out - the islands could never be seen with
+ * any ocean around them, and panning stopped a few kilometres offshore. The
+ * cloud stops at BOUNDS either way; what this buys is context and a way to
+ * back off and look at the whole thing.
+ */
+export const VIEW_BOUNDS: [number, number, number, number] = [
+  -21.0, 29.6, -12.7, 36.0,
 ];
 
 /** Centred on the central massif rather than the island's centroid. */

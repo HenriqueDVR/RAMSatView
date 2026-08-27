@@ -140,8 +140,10 @@ export class ObservedLayer {
   /**
    * `beforeId` decides what this can cover. It belongs above the basemap and
    * the hillshade - it is a picture of the sky, not of the ground - and below
-   * the sea plane and the forecast volume, which are three-dimensional bodies
-   * that a flat raster drawn last would paint straight over.
+   * the forecast volume, which is a three-dimensional body that a flat raster
+   * drawn last would paint straight over. Left unset in practice: the volume
+   * is a custom layer, and custom layers are drawn after every style layer
+   * whatever order they were added in.
    */
   constructor(map: MapLibreMap, beforeId?: string) {
     this.map = map;
