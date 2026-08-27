@@ -13,7 +13,9 @@
     "prebuild": "npm run copy-maplibre-worker",
     "test": "playwright test --project=logic",
     "test:map": "playwright test --project=desktop --project=mobile",
-    "test:all": "playwright test"
+    "test:all": "playwright test",
+    "set-html-lang": "node scripts/set-html-lang.mjs",
+    "postbuild": "npm run set-html-lang"
   },
   "dependencies": {
     "maplibre-gl": "^6.6.0",

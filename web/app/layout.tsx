@@ -17,7 +17,11 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // lang is set per-locale by the route segment; html here carries the default.
+  // Only the root layout may carry <html>, and it sits above the [locale]
+  // segment, so it cannot know which language the page below it is in. The
+  // default here is corrected per page by scripts/set-html-lang.mjs after the
+  // export - see that file. This comment used to claim the route segment did
+  // it, which nothing did.
   return (
     <html lang="pt">
       <body>{children}</body>

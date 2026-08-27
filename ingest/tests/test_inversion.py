@@ -267,7 +267,7 @@ def test_strong_wind_is_reported_even_when_the_view_is_good():
     levels = make_levels((300, 0.0, 20.0), (1500, 0.0, 13.0), (2100, 0.0, 11.0))
     visibility, _, _ = score_hour(ARIEIRO, make_hour(levels, wind_speed_10m_kmh=70))
     assert visibility.value > 80
-    assert any("wind" in reason for reason in visibility.reasons)
+    assert any(r["code"] == "wind.strong" for r in visibility.reasons)
 
 
 @pytest.mark.parametrize(
@@ -304,7 +304,7 @@ def test_fanal_scores_the_mist_as_the_attraction():
     misty = make_hour(make_levels((300, 0.1, 20.0), (1150, 0.95, 14.0), (2100, 0.1, 11.0)))
     _, fog, _ = score_hour(fanal, misty)
     assert fog.value > 80
-    assert any("forest" in reason for reason in fog.reasons)
+    assert any(r["code"] == "fog.in_forest" for r in fog.reasons)
 
     # And the same sky at an ordinary viewpoint of the same height is a wasted
     # morning, which is what it always was.
@@ -318,7 +318,7 @@ def test_fanal_without_mist_is_the_low_score():
     clear = make_hour(make_levels((300, 0.0, 20.0), (1150, 0.0, 14.0), (2100, 0.0, 11.0)))
     _, fog, _ = score_hour(fanal, clear)
     assert fog.value < 10
-    assert any("clear air" in reason for reason in fog.reasons)
+    assert any(r["code"] == "fog.clear" for r in fog.reasons)
 
 
 def test_rain_is_not_mist():
@@ -328,7 +328,7 @@ def test_rain_is_not_mist():
     dry = score_hour(fanal, make_hour(levels))[1]
     wet = score_hour(fanal, make_hour(levels, precipitation_mm=3.0))[1]
     assert wet.value < dry.value
-    assert any("rain" in reason for reason in wet.reasons)
+    assert any(r["code"] == "fog.rain" for r in wet.reasons)
 
 
 def test_every_fog_score_still_carries_a_reason():

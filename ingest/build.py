@@ -53,9 +53,9 @@ from ingest.sources.openmeteo_grid import header as grid_header
 from ingest.sources.openmeteo_marine import OpenMeteoMarine
 from ingest.spots import REPO_ROOT, Spot, by_type, load_spots
 
-# 3: every spot carries its own hourly series, so the readouts follow the
-# scrubber instead of staying on the day summary while the map moves.
-SCHEMA_VERSION = 3
+# 4: reasons are codes and their numbers rather than English sentences, so the
+# Portuguese half of the site is no longer explained in English.
+SCHEMA_VERSION = 4
 FORECAST_HOURS = 72
 FORECAST_DAYS = 3
 
@@ -194,11 +194,11 @@ def build_viewpoint(
         # visibility here, after the profile has had its say.
         calima = _calima_for(air, outlook.sunrise_utc)
         visibility = outlook.visibility
-        if calima.reason is not None:
+        if calima.reasons:
             visibility = Score(
                 round(visibility.value * calima.clarity, 1),
                 visibility.confidence,
-                [*visibility.reasons, calima.reason],
+                [*visibility.reasons, *calima.reasons],
             )
 
         # Not "will I see anything" but "will the sky do something", which is

@@ -48,6 +48,48 @@ const DICTIONARY = {
     "calima.noticeable": "Poeira do Sara a toldar a vista",
     "calima.heavy": "Calima forte - sem vista",
     "score.colour": "Cor do nascer",
+    // --- reasons. The ingest publishes a code and the numbers behind it; the
+    // wording lives here, with all the other wording, so the Portuguese half of
+    // the site is not explained in English.
+    "reason.vis.rain": "Chuva prevista ({mm} mm)",
+    "reason.vis.cloud_above": "Nuvens acima do cume ({pct}%)",
+    "reason.vis.clear_above": "Ar limpo acima do cume",
+    "reason.vis.broken_above": "Nuvens dispersas acima do cume ({pct}%)",
+    "reason.vis.cirrus": "Cirros altos - boa cor",
+    "reason.wind.strong": "Vento forte ({kmh} km/h)",
+    "reason.sea.inside": "Cume provavelmente dentro da nuvem ({pct}% a {m} m)",
+    "reason.sea.deck_below":
+      "Topo do mar de nuvens perto dos {m} m, abaixo do cume",
+    "reason.sea.no_deck": "Sem mar de nuvens previsto abaixo do cume",
+    "reason.sea.layer_above": "Camada de nuvens chega aos {m} m, acima do cume",
+    "reason.sea.inversion": "Inversao termica presente (+{c} C)",
+    "reason.fog.in_forest":
+      "Nevoa na floresta ({pct}% a {m} m) - o motivo da visita",
+    "reason.fog.patchy": "Nevoa irregular prevista ({pct}%)",
+    "reason.fog.clear": "Ar limpo na floresta - sem nevoa prevista",
+    "reason.fog.rain":
+      "Chuva prevista ({mm} mm) - a nevoa e o atrativo, o aguaceiro nao",
+    "reason.colour.empty": "Ceu vazio - limpo, mas sem nada para a luz acender",
+    "reason.colour.lid": "Nuvens altas fechadas ({pct}%) - tampa, nao tela",
+    "reason.colour.band": "Nuvens altas a {pct}% - a faixa que se acende",
+    "reason.colour.some_high": "Algumas nuvens altas ({pct}%)",
+    "reason.colour.mid_blocking":
+      "Nuvens medias ({pct}%) a bloquear a luz vinda de baixo",
+    "reason.colour.deck_floor": "Um mar de nuvens por baixo para apanhar a luz",
+    "reason.colour.dust_reds":
+      "Um pouco de poeira no ar - vermelhos mais fundos",
+    "reason.colour.in_cloud": "Dentro da nuvem - daqui nao se ve o nascer",
+    "reason.air.slight": "Ligeira bruma do Sara (AOD {aod})",
+    "reason.air.noticeable": "Poeira do Sara a toldar a vista (AOD {aod})",
+    "reason.air.heavy": "Calima forte - a vista vai desaparecer (AOD {aod})",
+    "reason.air.dust": "poeira {dust} ug/m3",
+    "reason.beach.rough": "Mar demasiado agitado para nadar a vontade",
+    "reason.beach.calm": "Mar calmo",
+    "reason.beach.moderate_swell": "Ondulacao moderada",
+    "reason.beach.cold_water": "Agua fria para nadar",
+    "reason.beach.chilly_wind": "Vento suficiente para arrefecer fora de agua",
+    "reason.beach.high_uv": "UV muito alto - sombra e protetor solar",
+    "reason.beach.warning": "Aviso {level} do IPMA em vigor: {type}",
     "profile.title": "Perfil vertical",
     "profile.caption": "Perfil vertical: nuvem ate {deck} m, cume a {summit} m",
     "profile.at_summit": "Nuvem no cume {pct}%",
@@ -107,6 +149,47 @@ const DICTIONARY = {
     "calima.noticeable": "Saharan dust hazing the view",
     "calima.heavy": "Heavy calima - no view",
     "score.colour": "Sunrise colour",
+    // --- reasons. The ingest publishes a code and the numbers behind it, and
+    // the wording lives here alongside everything else the reader sees.
+    "reason.vis.rain": "Rain forecast ({mm} mm)",
+    "reason.vis.cloud_above": "Cloud above the summit ({pct}%)",
+    "reason.vis.clear_above": "Clear air above the summit",
+    "reason.vis.broken_above": "Broken cloud above the summit ({pct}%)",
+    "reason.vis.cirrus": "High cirrus - good colour",
+    "reason.wind.strong": "Strong wind ({kmh} km/h)",
+    "reason.sea.inside": "Summit likely inside the cloud ({pct}% at {m} m)",
+    "reason.sea.deck_below": "Cloud deck top near {m} m, below the summit",
+    "reason.sea.no_deck": "No cloud deck forecast below the summit",
+    "reason.sea.layer_above": "Cloud layer reaches {m} m, above the summit",
+    "reason.sea.inversion": "Temperature inversion present (+{c} C)",
+    "reason.fog.in_forest":
+      "Cloud in the forest ({pct}% at {m} m) - the reason to come",
+    "reason.fog.patchy": "Patchy mist forecast ({pct}%)",
+    "reason.fog.clear": "Clear air in the forest - no mist forecast",
+    "reason.fog.rain":
+      "Rain forecast ({mm} mm) - mist is the draw, a downpour is not",
+    "reason.colour.empty":
+      "Empty sky - clear, but nothing for the light to catch",
+    "reason.colour.lid":
+      "High cloud closed over ({pct}%) - a lid rather than a canvas",
+    "reason.colour.band": "High cloud at {pct}% - the band that lights up",
+    "reason.colour.some_high": "Some high cloud ({pct}%)",
+    "reason.colour.mid_blocking":
+      "Middle cloud ({pct}%) blocking the light from below",
+    "reason.colour.deck_floor": "A cloud sea underneath to catch it",
+    "reason.colour.dust_reds": "A little dust in the air - deeper reds",
+    "reason.colour.in_cloud": "In the cloud - no sunrise to see from here",
+    "reason.air.slight": "Slight Saharan haze (AOD {aod})",
+    "reason.air.noticeable": "Saharan dust hazing the view (AOD {aod})",
+    "reason.air.heavy": "Heavy calima - the view will be gone (AOD {aod})",
+    "reason.air.dust": "dust {dust} ug/m3",
+    "reason.beach.rough": "Sea too rough to swim comfortably",
+    "reason.beach.calm": "Calm sea",
+    "reason.beach.moderate_swell": "Moderate swell",
+    "reason.beach.cold_water": "Water is cold for swimming",
+    "reason.beach.chilly_wind": "Windy enough to feel chilly out of the water",
+    "reason.beach.high_uv": "Very high UV - shade and sunscreen",
+    "reason.beach.warning": "IPMA {level} warning in force: {type}",
     "profile.title": "Vertical profile",
     "profile.caption":
       "Vertical profile: cloud to {deck} m, summit at {summit} m",
@@ -161,6 +244,24 @@ export type Translate = (
   key: TranslationKey,
   vars?: Record<string, string | number>,
 ) => string;
+
+/**
+ * One reason, in the reader's language.
+ *
+ * Falls back to the bare code rather than an empty line. A score with an
+ * unexplained number beside it is exactly what `validate()` refuses to publish
+ * on the other side of the pipeline, and a missing translation must not be able
+ * to produce one here either - it should look wrong, visibly, rather than
+ * silently drop the explanation.
+ */
+export function reasonText(
+  t: Translate,
+  reason: { code: string; vars?: Record<string, string | number> },
+): string {
+  const key = `reason.${reason.code}` as TranslationKey;
+  const text = t(key, reason.vars);
+  return text === key ? reason.code : text;
+}
 
 export function translator(locale: Locale): Translate {
   return (key: TranslationKey, vars?: Record<string, string | number>) =>

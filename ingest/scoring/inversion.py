@@ -22,6 +22,7 @@ from bisect import bisect_left
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
+from ingest.scoring.reasons import reason
 from ingest.sources.base import AtmosphereForecast, AtmosphereHour, LevelSample
 from ingest.spots import Spot
 
@@ -45,7 +46,10 @@ SUNRISE_WINDOW_H = 1  # evaluate this many hours either side of sunrise
 class Score:
     value: float  # 0..100
     confidence: float  # 0..1
-    reasons: list[str] = field(default_factory=list)
+    # Codes and their numbers, not sentences - see scoring/reasons.py. The site
+    # is bilingual and these are shown to the reader, so the wording lives with
+    # the rest of the wording, on the web side.
+    reasons: list[dict] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -274,31 +278,27 @@ def _score_fog_spot(
     anywhere.
     """
     fog = 100.0 * summit_cover
-    reasons: list[str] = []
+    reasons: list[dict] = []
     if summit_cover >= DECK_THRESHOLD:
         reasons.append(
-            "cloud in the forest ({:.0f}% at {:.0f}m) - the reason to come".format(
-                summit_cover * 100, spot.elevation_m
+            reason(
+                "fog.in_forest",
+                pct=round(summit_cover * 100),
+                m=round(spot.elevation_m),
             )
         )
     elif summit_cover >= 0.25:
-        reasons.append(
-            "patchy mist forecast ({:.0f}%)".format(summit_cover * 100)
-        )
+        reasons.append(reason("fog.patchy", pct=round(summit_cover * 100)))
     else:
-        reasons.append("clear air in the forest - no mist forecast")
+        reasons.append(reason("fog.clear"))
 
     if hour.precipitation_mm > 0.2:
         fog *= 0.5
-        reasons.append(
-            "rain forecast ({:.1f}mm) - mist is the draw, a downpour is not".format(
-                hour.precipitation_mm
-            )
-        )
+        reasons.append(reason("fog.rain", mm=round(hour.precipitation_mm, 1)))
 
     if hour.wind_speed_10m_kmh >= STRONG_WIND_KMH:
         reasons.append(
-            "strong wind ({:.0f} km/h)".format(hour.wind_speed_10m_kmh)
+            reason("wind.strong", kmh=round(hour.wind_speed_10m_kmh))
         )
 
     base_confidence = vertical_confidence(levels, spot.elevation_m)
@@ -345,24 +345,22 @@ def score_hour(spot: Spot, hour: AtmosphereHour) -> tuple[Score, Score, dict]:
 
     # --- visibility
     visibility = 100.0 * (1.0 - blocking)
-    vis_reasons: list[str] = []
+    vis_reasons: list[dict] = []
     if hour.precipitation_mm > 0.2:
         visibility *= 0.35
-        vis_reasons.append("rain forecast ({:.1f}mm)".format(hour.precipitation_mm))
+        vis_reasons.append(reason("vis.rain", mm=round(hour.precipitation_mm, 1)))
     if blocking >= 0.7:
-        vis_reasons.append("cloud above the summit ({:.0f}%)".format(blocking * 100))
+        vis_reasons.append(reason("vis.cloud_above", pct=round(blocking * 100)))
     elif blocking <= 0.2:
-        vis_reasons.append("clear air above the summit")
+        vis_reasons.append(reason("vis.clear_above"))
     else:
-        vis_reasons.append(
-            "broken cloud above the summit ({:.0f}%)".format(blocking * 100)
-        )
+        vis_reasons.append(reason("vis.broken_above", pct=round(blocking * 100)))
     if 0.15 <= hour.cloud_cover_high <= 0.75 and blocking < 0.4:
         visibility = min(100.0, visibility * 1.05)
-        vis_reasons.append("high cirrus - good colour")
+        vis_reasons.append(reason("vis.cirrus"))
     if hour.wind_speed_10m_kmh >= STRONG_WIND_KMH:
         vis_reasons.append(
-            "strong wind ({:.0f} km/h)".format(hour.wind_speed_10m_kmh)
+            reason("wind.strong", kmh=round(hour.wind_speed_10m_kmh))
         )
 
     # --- cloud sea
@@ -377,31 +375,25 @@ def score_hour(spot: Spot, hour: AtmosphereHour) -> tuple[Score, Score, dict]:
     # Three independent conditions must all hold for a sea of clouds: thick
     # cloud below you, clear air above you, and clear air where you stand.
     cloud_sea = 100.0 * below_cover * (1.0 - above_profile) * (1.0 - summit_cover)
-    sea_reasons: list[str] = []
+    sea_reasons: list[dict] = []
     if in_the_cloud:
         sea_reasons.append(
-            "summit likely inside the cloud ({:.0f}% at {:.0f}m)".format(
-                summit_cover * 100, elevation
+            reason(
+                "sea.inside", pct=round(summit_cover * 100), m=round(elevation)
             )
         )
     elif deck_below:
-        sea_reasons.append(
-            "cloud deck top near {:.0f}m, below the summit".format(deck_top)
-        )
+        sea_reasons.append(reason("sea.deck_below", m=round(deck_top)))
     elif deck_top is None:
-        sea_reasons.append("no cloud deck forecast below the summit")
+        sea_reasons.append(reason("sea.no_deck"))
     else:
         # A layer exists but its top is above the summit: the viewpoint is
         # inside or beneath it. Never leave a score unexplained.
-        sea_reasons.append(
-            "cloud layer reaches {:.0f}m, above the summit".format(deck_top)
-        )
+        sea_reasons.append(reason("sea.layer_above", m=round(deck_top)))
 
     strength = inversion_strength(levels)
     if strength > 0.5:
-        sea_reasons.append(
-            "temperature inversion present (+{:.1f} C)".format(strength)
-        )
+        sea_reasons.append(reason("sea.inversion", c=round(strength, 1)))
 
     # --- confidence
     base_confidence = vertical_confidence(levels, elevation)

@@ -7,6 +7,12 @@ from ingest.scoring.colour import (
 )
 
 
+def codes(result):
+    """Reasons are codes now, so the tests assert on the decision rather than
+    on a sentence - which is what they were always trying to check."""
+    return [r["code"] for r in result.reasons]
+
+
 def colour(**overrides):
     args = dict(
         cloud_high=IDEAL_HIGH,
@@ -26,13 +32,13 @@ def test_a_clear_sky_is_not_a_good_sunrise():
     every other number in the document and is dull to stand in."""
     empty = colour(cloud_high=0.0)
     assert empty.value == 0.0
-    assert "nothing for the light to catch" in empty.reasons[0]
+    assert codes(empty) == ["colour.empty"]
 
 
 def test_an_overcast_lid_is_not_one_either():
     closed = colour(cloud_high=1.0)
     assert closed.value == 0.0
-    assert "lid" in closed.reasons[0]
+    assert codes(closed) == ["colour.lid"]
 
 
 def test_scattered_cirrus_is_the_best_case():
@@ -46,8 +52,8 @@ def test_the_words_never_contradict_the_number():
     up for' while its own sentence said 'empty sky'."""
     for high in [round(0.05 * n, 2) for n in range(21)]:
         result = colour(cloud_high=high)
-        says_empty = any("nothing for the light" in r for r in result.reasons)
-        says_lid = any("lid" in r for r in result.reasons)
+        says_empty = "colour.empty" in codes(result)
+        says_lid = "colour.lid" in codes(result)
         if says_empty or says_lid:
             assert result.value == 0.0, f"{high} scores {result.value}"
 
@@ -55,14 +61,14 @@ def test_the_words_never_contradict_the_number():
 def test_thick_middle_cloud_blocks_the_light_from_below():
     assert colour(cloud_mid=1.0).value == 0.0
     assert colour(cloud_mid=0.75).value < colour(cloud_mid=0.0).value
-    assert any("middle cloud" in r for r in colour(cloud_mid=0.75).reasons)
+    assert "colour.mid_blocking" in codes(colour(cloud_mid=0.75))
 
 
 def test_standing_above_the_deck_makes_it_better_not_worse():
     """The cloud sea becomes a lit floor. Every other score in this project
     treats cloud as the enemy; here it is the subject."""
     assert colour(deck_below=True).value > colour(deck_below=False).value
-    assert any("cloud sea" in r for r in colour(deck_below=True).reasons)
+    assert "colour.deck_floor" in codes(colour(deck_below=True))
 
 
 def test_only_an_exceptional_morning_reaches_full_marks():
@@ -76,7 +82,7 @@ def test_only_an_exceptional_morning_reaches_full_marks():
 def test_inside_the_cloud_there_is_no_sunrise_at_any_price():
     fogged = colour(summit_cover=0.9, cloud_high=IDEAL_HIGH, deck_below=True)
     assert fogged.value == 0.0
-    assert "in the cloud" in fogged.reasons[0]
+    assert codes(fogged) == ["colour.in_cloud"]
 
 
 def test_a_little_dust_deepens_it_and_a_lot_ends_it():

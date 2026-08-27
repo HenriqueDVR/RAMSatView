@@ -26,7 +26,7 @@ function profile(baseM: number, topM: number): [number, number][] {
 
 export function fixtureConditions(now = Date.now()): Conditions {
   return {
-    schema_version: 3,
+    schema_version: 4,
     generated_at: new Date(now - 12 * 60_000).toISOString(),
     stale_at: new Date(now + 3 * 3600_000).toISOString(),
     attribution: ["Open-Meteo", "IPMA", "EOX Sentinel-2 cloudless"],
@@ -75,22 +75,22 @@ export function fixtureConditions(now = Date.now()): Conditions {
             visibility: {
               value: 92,
               confidence: 0.78,
-              reasons: ["clear air above the summit"],
+              reasons: [{ code: "vis.clear_above" }],
             },
             cloud_sea: {
               value: 81,
               confidence: 0.74,
               reasons: [
-                "cloud deck forecast at 1400 m, below the summit",
-                "temperature inversion present (+3.2 C)",
+                { code: "sea.deck_below", vars: { m: 1400 } },
+                { code: "sea.inversion", vars: { c: 3.2 } },
               ],
             },
             colour: {
               value: 74,
               confidence: 0.55,
               reasons: [
-                "high cloud at 45% - the band that lights up",
-                "a cloud sea underneath to catch it",
+                { code: "colour.band", vars: { pct: 45 } },
+                { code: "colour.deck_floor" },
               ],
             },
             deck_base_m: 600,
@@ -119,12 +119,12 @@ export function fixtureConditions(now = Date.now()): Conditions {
             visibility: {
               value: 64,
               confidence: 0.6,
-              reasons: ["thin cloud at summit level"],
+              reasons: [{ code: "vis.broken_above", vars: { pct: 35 } }],
             },
             cloud_sea: {
               value: 35,
               confidence: 0.6,
-              reasons: ["deck top close to the summit"],
+              reasons: [{ code: "sea.layer_above", vars: { m: 1700 } }],
             },
             deck_base_m: 900,
             deck_top_m: 1700,
@@ -151,7 +151,10 @@ export function fixtureConditions(now = Date.now()): Conditions {
             score: {
               value: 47.3,
               confidence: 0.9,
-              reasons: ["moderate swell", "very high UV - shade and sunscreen"],
+              reasons: [
+                { code: "beach.moderate_swell" },
+                { code: "beach.high_uv" },
+              ],
             },
             sst_c: 24.5,
             wave_height_m: 1.29,

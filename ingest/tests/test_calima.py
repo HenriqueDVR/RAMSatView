@@ -17,7 +17,7 @@ def test_clean_maritime_air_costs_nothing():
     calm = assess(0.10, 0.0)
     assert calm.clarity == 1.0
     assert calm.severity == "none"
-    assert calm.reason is None
+    assert calm.reasons == ()
 
 
 def test_unknown_is_not_clean():
@@ -25,7 +25,7 @@ def test_unknown_is_not_clean():
     saw. It says nothing and changes nothing."""
     unknown = assess(None)
     assert unknown.clarity == 1.0
-    assert unknown.reason is None
+    assert unknown.reasons == ()
     assert not unknown.known
 
 
@@ -33,9 +33,11 @@ def test_a_heavy_calima_takes_most_of_the_view():
     heavy = assess(1.2, 240.0)
     assert heavy.severity == "heavy"
     assert heavy.clarity < 0.3
-    assert "calima" in heavy.reason
-    # The number people recognise from air-quality warnings earns its place.
-    assert "240" in heavy.reason
+    assert [r["code"] for r in heavy.reasons] == ["air.heavy", "air.dust"]
+    # The number people recognise from air-quality warnings earns its place,
+    # as its own reason: a template cannot take an optional placeholder, and a
+    # suffix would have been dropped without anybody noticing.
+    assert heavy.reasons[1]["vars"]["dust"] == 240
 
 
 def test_the_haze_deepens_with_the_dust():
@@ -66,7 +68,7 @@ def test_the_worst_hour_wins_a_window():
 
 
 def test_a_window_with_nothing_measured_says_nothing():
-    assert worst([assess(None), assess(None)]).reason is None
+    assert worst([assess(None), assess(None)]).reasons == ()
     assert worst([]).clarity == 1.0
 
 

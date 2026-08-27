@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
 from ingest.scoring.inversion import Score
+from ingest.scoring.reasons import reason
 from ingest.sources.base import MarineForecast, MarineHour, OfficialStatus
 from ingest.sources.ipma import FUNCHAL, PORTO_SANTO, active_warnings
 from ingest.spots import Spot
@@ -144,19 +145,19 @@ def score_beach(
     # Reasons carry judgement, never a restatement of numbers the UI already
     # shows in its own facts row. Repeating them means the same value gets
     # rounded twice, in two languages, and disagrees with itself on screen.
-    reasons: list[str] = []
+    reasons: list[dict] = []
     if state <= 0.2:
-        reasons.append("sea too rough to swim comfortably")
+        reasons.append(reason("beach.rough"))
     elif state >= 0.9:
-        reasons.append("calm sea")
+        reasons.append(reason("beach.calm"))
     else:
-        reasons.append("moderate swell")
+        reasons.append(reason("beach.moderate_swell"))
     if comfort <= 0.5:
-        reasons.append("water is cold for swimming")
+        reasons.append(reason("beach.cold_water"))
     if wind_kmh is not None and wind_kmh >= BRISK_WIND_KMH:
-        reasons.append("windy enough to feel chilly out of the water")
+        reasons.append(reason("beach.chilly_wind"))
     if uv is not None and uv >= HIGH_UV:
-        reasons.append("very high UV - shade and sunscreen")
+        reasons.append(reason("beach.high_uv"))
 
     # --- official gate. IPMA outranks the model, always.
     noon = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc) + timedelta(
@@ -174,7 +175,7 @@ def score_beach(
         value = min(value, ceiling)
         reasons.insert(
             0,
-            "IPMA {} warning in force: {}".format(worst["level"], worst["type"]),
+            reason("beach.warning", level=worst["level"], type=worst["type"]),
         )
 
     # Confidence has two inputs: how much of the marine data actually resolved

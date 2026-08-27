@@ -36,10 +36,19 @@ Things the app currently gets wrong, rather than things it does not do yet.
 - [ ] **Play/pause on the scrubber.** The slider, the ticks, the day marks and
       the "now" button are all there; nothing lets the day run by itself.
       Arrow-key stepping already works - it is a real `<input type="range">`.
-- [ ] **The vertical profile chart is still the day's**, while the deck line
-      drawn on it and every number beside it now follow the hour. The curve is
-      the sunrise profile by design (hourly profiles per spot would duplicate
-      `cloud-grid.bin`), but the panel should say which is which.
+- [ ] **The panel mixes the hour with the day, without saying so.** The
+      verdict, the temperature and the wind follow the scrubber; the profile
+      chart and the reasons list are the sunrise summary. On screen right now
+      Fanal reads "No mist forecast" directly above "Cloud in the forest (45%)"
+      - both true, about different moments, and it reads as a contradiction.
+      The curve staying daily is deliberate (hourly profiles per spot would
+      duplicate `cloud-grid.bin`); what is missing is a heading on the reasons
+      list saying they describe the sunrise.
+- [ ] **The root layout cannot know the locale.** Only the root layout may
+      carry `<html>` and it sits above the `[locale]` segment, so the language
+      is stamped after export by `web/scripts/set-html-lang.mjs`. It works and
+      it is tested by eye; restructuring the routes so the segment owns the
+      element would remove the post-processing step.
 
 ## Verification owed
 
@@ -102,6 +111,13 @@ Things the app currently gets wrong, rather than things it does not do yet.
       scrubber, and a line in the panel. The coefficient is a first guess and
       is named as one - it wants the same calibration as the inversion
       tunables.
+- [x] Reasons are codes with their numbers, not English sentences, so the
+      Portuguese half of the site is no longer explained in English. Schema 4.
+      `reason()` refuses an unknown code and `test_reasons.py` reads
+      `web/lib/i18n.ts` to check both languages can say all of them.
+- [x] Claude is no longer named anywhere in the public repository: only
+      `.claude/launch.json` was tracked, and no file content, commit message or
+      trailer ever mentioned it.
 - [x] Sunrise colour: whether the sky will *do* something, rather than whether
       it is merely visible. `ingest/scoring/colour.py`. Confidence is capped at
       0.55 on purpose - the light comes from hundreds of kilometres east of

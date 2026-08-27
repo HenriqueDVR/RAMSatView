@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ingest.scoring.reasons import reason
+
 # Where high cloud stops being decoration and starts being a lid. The peak is
 # below half deliberately: scattered cirrus lights up in bands, an even sheet
 # just goes grey.
@@ -66,7 +68,7 @@ MAX_CONFIDENCE = 0.55
 class Colour:
     value: float
     confidence: float
-    reasons: list[str]
+    reasons: list[dict]
 
 
 # Below this there is nothing up there to light at all, and above it there is
@@ -103,14 +105,14 @@ def score_colour(
     module decided on, so heavy dust dims this the same way it dims the view -
     a sky nobody can see through is not a sunrise regardless of its colour.
     """
-    reasons: list[str] = []
+    reasons: list[dict] = []
 
     if summit_cover >= 0.6:
         # Inside the cloud. Whatever the sky is doing above, you are in it.
         return Colour(
             0.0,
             min(MAX_CONFIDENCE, base_confidence),
-            ["in the cloud - no sunrise to see from here"],
+            [reason("colour.in_cloud")],
         )
 
     term = _high_term(cloud_high)
@@ -119,39 +121,29 @@ def score_colour(
     # The words come from the same number the score does, so the two can never
     # disagree in front of somebody deciding whether to set an alarm.
     if term == 0.0 and cloud_high <= NOTHING_TO_LIGHT:
-        reasons.append("empty sky - clear, but nothing for the light to catch")
+        reasons.append(reason("colour.empty"))
     elif term == 0.0:
-        reasons.append(
-            "high cloud closed over ({:.0f}%) - a lid rather than a canvas".format(
-                cloud_high * 100
-            )
-        )
+        reasons.append(reason("colour.lid", pct=round(cloud_high * 100)))
     elif term >= 0.8:
-        reasons.append(
-            "high cloud at {:.0f}% - the band that lights up".format(cloud_high * 100)
-        )
+        reasons.append(reason("colour.band", pct=round(cloud_high * 100)))
     else:
-        reasons.append("some high cloud ({:.0f}%)".format(cloud_high * 100))
+        reasons.append(reason("colour.some_high", pct=round(cloud_high * 100)))
 
     if cloud_mid > MID_TOLERANCE:
         blocked = min(1.0, (cloud_mid - MID_TOLERANCE) / (1.0 - MID_TOLERANCE))
         value *= 1.0 - blocked
-        reasons.append(
-            "middle cloud ({:.0f}%) blocking the light from below".format(
-                cloud_mid * 100
-            )
-        )
+        reasons.append(reason("colour.mid_blocking", pct=round(cloud_mid * 100)))
 
     # The bonuses are multipliers, so they are only worth saying when there is
     # something for them to multiply. "A cloud sea underneath to catch it" on a
     # score of zero reads as a reason to go.
     if deck_below and value > 0.0:
         value *= DECK_BONUS
-        reasons.append("a cloud sea underneath to catch it")
+        reasons.append(reason("colour.deck_floor"))
 
     if value > 0.0 and aod is not None and HAZE_HELPS_FROM <= aod <= HAZE_HELPS_TO:
         value *= HAZE_BONUS
-        reasons.append("a little dust in the air - deeper reds")
+        reasons.append(reason("colour.dust_reds"))
 
     value *= haze_clarity
 

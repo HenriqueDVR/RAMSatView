@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { cloudAt, deckVerdict, type ViewpointDay } from "../lib/conditions";
+import {
+  SCHEMA_VERSION,
+  cloudAt,
+  deckVerdict,
+  loadConditions,
+  type ViewpointDay,
+} from "../lib/conditions";
+import { reasonText, translator } from "../lib/i18n";
 import { selectSlabs } from "../lib/map/slabs";
 
 /**
@@ -20,8 +27,16 @@ function day(over: Partial<ViewpointDay>): ViewpointDay {
   return {
     date: "2026-08-26",
     sunrise_utc: "2026-08-26T06:38:00Z",
-    visibility: { value: 90, confidence: 0.7, reasons: ["clear"] },
-    cloud_sea: { value: 50, confidence: 0.7, reasons: ["deck"] },
+    visibility: {
+      value: 90,
+      confidence: 0.7,
+      reasons: [{ code: "vis.clear_above" }],
+    },
+    cloud_sea: {
+      value: 50,
+      confidence: 0.7,
+      reasons: [{ code: "sea.no_deck" }],
+    },
     deck_base_m: null,
     deck_top_m: null,
     inversion_c: 0,
@@ -34,11 +49,22 @@ function day(over: Partial<ViewpointDay>): ViewpointDay {
 }
 
 test("cloudAt interpolates between samples", () => {
-  expect(cloudAt([[0, 0], [1000, 1]], 500)).toBeCloseTo(0.5, 5);
+  expect(
+    cloudAt(
+      [
+        [0, 0],
+        [1000, 1],
+      ],
+      500,
+    ),
+  ).toBeCloseTo(0.5, 5);
 });
 
 test("cloudAt clamps outside the profile rather than extrapolating", () => {
-  const points: [number, number][] = [[500, 0.4], [1500, 0.8]];
+  const points: [number, number][] = [
+    [500, 0.4],
+    [1500, 0.8],
+  ];
   expect(cloudAt(points, 0)).toBe(0.4);
   expect(cloudAt(points, 9000)).toBe(0.8);
 });
@@ -76,4 +102,51 @@ test("selectSlabs skips haze and spaces the slabs it keeps", () => {
 
 test("selectSlabs draws nothing for a clear profile", () => {
   expect(selectSlabs(profile(-1, -1))).toEqual([]);
+});
+
+// --- the bilingual contract ----------------------------------------------
+
+test("a code with no wording shows the code rather than an empty line", () => {
+  // A score with an unexplained number beside it is what validate() refuses to
+  // publish on the other side of the pipeline. A missing translation must look
+  // wrong rather than silently drop the explanation.
+  const t = translator("en");
+  expect(reasonText(t, { code: "nothing.like.this" })).toBe(
+    "nothing.like.this",
+  );
+});
+
+test("a cached document from an older schema is discarded, not rendered", async () => {
+  // The network path checks the version and throws; the catch then reaches for
+  // the cache. An unchecked cache walked straight around the tripwire and
+  // rendered a document from the previous schema - which is the one thing the
+  // version check exists to stop.
+  const CACHE_KEY = "conditions:last-good";
+  const store = new Map<string, string>();
+  const stale = { schema_version: SCHEMA_VERSION - 1, spots: [] };
+  store.set(CACHE_KEY, JSON.stringify(stale));
+
+  const window = {
+    localStorage: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+    },
+  };
+  const restore = globalThis.window;
+  (globalThis as { window?: unknown }).window = window;
+  const failing = (async () => {
+    throw new Error("offline");
+  }) as unknown as typeof fetch;
+  const original = globalThis.fetch;
+  globalThis.fetch = failing;
+
+  try {
+    await expect(loadConditions()).rejects.toThrow();
+    // And it is cleared, so it cannot be offered again on the next load.
+    expect(store.has(CACHE_KEY)).toBe(false);
+  } finally {
+    globalThis.fetch = original;
+    (globalThis as { window?: unknown }).window = restore;
+  }
 });

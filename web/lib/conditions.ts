@@ -11,14 +11,27 @@ import type { ObservedCloudHeader } from "@/lib/observedCloud";
 import type { SpotHoursHeader } from "@/lib/spotHours";
 import { withBase } from "@/lib/basePath";
 
-// 3: every spot carries its own hourly series, so the readouts follow the
-// scrubber instead of staying on the day summary while the map moves.
-export const SCHEMA_VERSION = 3;
+// 4: reasons are codes and their numbers rather than English sentences, so the
+// Portuguese half of the site is no longer explained in English.
+export const SCHEMA_VERSION = 4;
+
+/**
+ * Why a score came out the way it did: what the ingest decided, and the numbers
+ * it decided from.
+ *
+ * A code rather than a sentence, because the site is bilingual and the ingest
+ * has no business knowing which language anybody reads. See
+ * ingest/scoring/reasons.py.
+ */
+export type Reason = {
+  code: string;
+  vars?: Record<string, string | number>;
+};
 
 export type Score = {
   value: number;
   confidence: number;
-  reasons: string[];
+  reasons: Reason[];
 };
 
 /**
@@ -140,7 +153,20 @@ function readCache(): Conditions | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(CACHE_KEY);
-    return raw ? (JSON.parse(raw) as Conditions) : null;
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as Conditions;
+
+    // The same tripwire the network path gets, and it was missing here. A
+    // schema mismatch on the fetch throws, the catch below reaches for the
+    // cache, and an unchecked cache handed back a document from the previous
+    // schema to be rendered as though it were current - which is precisely
+    // what the version check exists to prevent. It showed up as reasons
+    // rendering as empty lines after they became codes.
+    if (cached.schema_version !== SCHEMA_VERSION) {
+      window.localStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+    return cached;
   } catch {
     return null;
   }

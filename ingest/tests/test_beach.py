@@ -161,7 +161,7 @@ def test_warning_text_is_surfaced_as_the_first_reason():
     gated = score_beach(
         BEACH, make_marine(), DAY, wind_kmh=5.0, status=make_status(warning("orange"))
     )
-    assert "IPMA" in gated.score.reasons[0]
+    assert gated.score.reasons[0]["code"] == "beach.warning"
 
 
 def test_warning_for_another_area_does_not_gate_this_beach():
@@ -214,7 +214,7 @@ def test_uv_uses_porto_santo_location_for_porto_santo_spots():
 
 def test_high_uv_is_flagged():
     outlook = score_beach(BEACH, make_marine(), DAY, wind_kmh=5.0, status=make_status())
-    assert any("UV" in reason for reason in outlook.score.reasons)
+    assert any(r["code"] == "beach.high_uv" for r in outlook.score.reasons)
 
 
 def test_confidence_drops_when_marine_data_is_missing():
@@ -258,11 +258,17 @@ def test_confidence_decays_with_lead_time():
 
 
 def test_reasons_do_not_restate_the_numbers_the_ui_already_shows():
-    """Duplicated values get rounded twice and disagree with each other."""
+    """Duplicated values get rounded twice and disagree with each other.
+
+    Now that a reason is a code and its numbers, the check is that the beach
+    reasons carry no numbers at all: none of them is about a value the facts
+    row is already showing.
+    """
     outlook = score_beach(BEACH, make_marine(), DAY, wind_kmh=5.0, status=make_status())
-    joined = " ".join(outlook.score.reasons)
-    assert "24.0" not in joined
-    assert "0.4" not in joined
+    for reason in outlook.score.reasons:
+        if reason["code"] == "beach.warning":
+            continue  # the warning's own level and type, which nothing else shows
+        assert "vars" not in reason, reason
 
 
 def test_returns_none_for_a_day_with_no_forecast_hours():

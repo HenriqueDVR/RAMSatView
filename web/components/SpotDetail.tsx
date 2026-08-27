@@ -13,6 +13,7 @@ import {
 import {
   formatLocalDate,
   formatLocalTime,
+  reasonText,
   type Locale,
   type Translate,
   type TranslationKey,
@@ -162,7 +163,9 @@ export default function SpotDetail({
               ...day.visibility.reasons,
               ...(day.colour?.reasons ?? []),
             ].map((reason) => (
-              <li key={reason}>{reason}</li>
+              <li key={`${reason.code}:${JSON.stringify(reason.vars ?? {})}`}>
+                {reasonText(t, reason)}
+              </li>
             ))}
           </ul>
         </>
@@ -208,7 +211,9 @@ export default function SpotDetail({
 
           <ul className="reasons">
             {day.score.reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
+              <li key={`${reason.code}:${JSON.stringify(reason.vars ?? {})}`}>
+                {reasonText(t, reason)}
+              </li>
             ))}
           </ul>
         </>

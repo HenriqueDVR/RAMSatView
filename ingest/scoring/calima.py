@@ -21,6 +21,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from ingest.scoring.reasons import reason
+
 # Optical depth of clean air here. At or under this is the sky the rest of the
 # model already assumes, and it costs nothing.
 CLEAN_AOD = 0.12
@@ -51,7 +53,10 @@ class Calima:
     severity: Severity
     #: Multiplier on visibility, 0..1. Exactly 1.0 when there is nothing to say.
     clarity: float
-    reason: str | None
+    #: Nothing to say, the severity, or the severity and the dust reading. A
+    #: template cannot take an optional number, so the concentration is its own
+    #: reason rather than a suffix that would otherwise be silently dropped.
+    reasons: tuple[dict, ...]
 
     @property
     def known(self) -> bool:
@@ -76,25 +81,19 @@ def assess(aod: float | None, dust_ug_m3: float | None = None) -> Calima:
     rather than reporting clear air the model never saw.
     """
     if aod is None:
-        return Calima(None, dust_ug_m3, "none", 1.0, None)
+        return Calima(None, dust_ug_m3, "none", 1.0, ())
 
     severity = severity_of(aod)
     excess = max(0.0, aod - CLEAN_AOD)
     clarity = math.exp(-HAZE_K * excess)
 
     if severity == "none":
-        return Calima(aod, dust_ug_m3, severity, 1.0, None)
+        return Calima(aod, dust_ug_m3, severity, 1.0, ())
 
-    words = {
-        "slight": "slight Saharan haze",
-        "noticeable": "Saharan dust hazing the view",
-        "heavy": "heavy calima - the view will be gone",
-    }[severity]
-    reason = f"{words} (AOD {aod:.2f})"
+    said = [reason(f"air.{severity}", aod=round(aod, 2))]
     if dust_ug_m3 is not None and dust_ug_m3 >= DUST_MENTION:
-        reason += f", dust {dust_ug_m3:.0f} ug/m3"
-
-    return Calima(aod, dust_ug_m3, severity, clarity, reason)
+        said.append(reason("air.dust", dust=round(dust_ug_m3)))
+    return Calima(aod, dust_ug_m3, severity, clarity, tuple(said))
 
 
 def worst(hours: list[Calima]) -> Calima:
@@ -105,5 +104,5 @@ def worst(hours: list[Calima]) -> Calima:
     """
     known = [hour for hour in hours if hour.known]
     if not known:
-        return Calima(None, None, "none", 1.0, None)
+        return Calima(None, None, "none", 1.0, ())
     return min(known, key=lambda hour: hour.clarity)
