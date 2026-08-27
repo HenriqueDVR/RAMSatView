@@ -242,6 +242,77 @@ def _grid_confidence(grid_elevation_m: float | None, elevation_m: float) -> floa
     return max(0.3, min(1.0, 1.0 - error / 800.0))
 
 
+def _score_fog_spot(
+    spot: Spot,
+    hour: AtmosphereHour,
+    summit_cover: float,
+    deck_base: float | None,
+    deck_top: float | None,
+    levels: tuple[LevelSample, ...],
+    visibility: float,
+    vis_reasons: list[str],
+) -> tuple[Score, Score, dict]:
+    """The inverse case: cloud at the viewpoint is what you came to see.
+
+    Fanal is a laurel forest at 1150m and the picture people drive there for is
+    the trees in mist. The ordinary scorer reads that morning as a wasted one -
+    thick cloud where you stand is the single thing it penalises hardest - so
+    it told anyone asking about Fanal to stay in bed on exactly the mornings
+    they should go. The README has listed this as a known limitation since the
+    first day.
+
+    The score is the cloud at the viewpoint, tempered by rain: mist in the
+    trees is the attraction, standing in a downpour is not. Everything else -
+    visibility, the diagnostics, the confidence - keeps its ordinary meaning,
+    because "can you see" and "is it raining" mean the same thing here as
+    anywhere.
+    """
+    fog = 100.0 * summit_cover
+    reasons: list[str] = []
+    if summit_cover >= DECK_THRESHOLD:
+        reasons.append(
+            "cloud in the forest ({:.0f}% at {:.0f}m) - the reason to come".format(
+                summit_cover * 100, spot.elevation_m
+            )
+        )
+    elif summit_cover >= 0.25:
+        reasons.append(
+            "patchy mist forecast ({:.0f}%)".format(summit_cover * 100)
+        )
+    else:
+        reasons.append("clear air in the forest - no mist forecast")
+
+    if hour.precipitation_mm > 0.2:
+        fog *= 0.5
+        reasons.append(
+            "rain forecast ({:.1f}mm) - mist is the draw, a downpour is not".format(
+                hour.precipitation_mm
+            )
+        )
+
+    if hour.wind_speed_10m_kmh >= STRONG_WIND_KMH:
+        reasons.append(
+            "strong wind ({:.0f} km/h)".format(hour.wind_speed_10m_kmh)
+        )
+
+    base_confidence = vertical_confidence(levels, spot.elevation_m)
+    diagnostics = {
+        "blocking": 0.0,
+        "above_profile": 0.0,
+        "below_cover": 0.0,
+        "summit_cover": summit_cover,
+        "deck_base_m": deck_base,
+        "deck_top_m": deck_top,
+        "inversion_c": inversion_strength(levels),
+        "vertical_confidence": base_confidence,
+    }
+    return (
+        Score(round(max(0.0, min(100.0, visibility)), 1), base_confidence, vis_reasons),
+        Score(round(max(0.0, min(100.0, fog)), 1), base_confidence, reasons),
+        diagnostics,
+    )
+
+
 def score_hour(spot: Spot, hour: AtmosphereHour) -> tuple[Score, Score, dict]:
     """Score one hour. Returns (visibility, cloud_sea, diagnostics)."""
     elevation = spot.elevation_m
@@ -291,6 +362,11 @@ def score_hour(spot: Spot, hour: AtmosphereHour) -> tuple[Score, Score, dict]:
     # --- cloud sea
     in_the_cloud = summit_cover >= DECK_THRESHOLD
     deck_below = deck_top is not None and deck_top < elevation - SUMMIT_MARGIN_M
+
+    if spot.fog_is_the_view:
+        return _score_fog_spot(
+            spot, hour, summit_cover, deck_base, deck_top, levels, visibility, vis_reasons
+        )
 
     # Three independent conditions must all hold for a sea of clouds: thick
     # cloud below you, clear air above you, and clear air where you stand.

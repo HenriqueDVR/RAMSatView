@@ -45,6 +45,34 @@ class AtmosphereHour:
 
 
 @dataclass(frozen=True)
+class AirHour:
+    """One hour of what is suspended in the air, rather than condensed in it.
+
+    Cloud and dust ruin a summit view in completely different ways and the
+    model only knew about the first. A Saharan dust plume - calima locally -
+    leaves the sky technically clear and the view gone: the sun comes up
+    through an orange soup and the horizon is a few kilometres away.
+    """
+
+    time: datetime  # timezone-aware, UTC
+    # Aerosol optical depth at 550nm, dimensionless. Literally how much light
+    # the column scatters out, which is exactly the quantity a hazy view is
+    # about. Clean maritime air over Madeira sits near 0.1.
+    aod: float | None
+    # Surface dust concentration. Corroborates the AOD and is the number people
+    # recognise from air-quality warnings.
+    dust_ug_m3: float | None
+
+
+@dataclass(frozen=True)
+class AirForecast:
+    spot_id: str
+    source: str
+    issued_at: datetime
+    hours: tuple[AirHour, ...]
+
+
+@dataclass(frozen=True)
 class AtmosphereForecast:
     spot_id: str
     source: str

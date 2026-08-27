@@ -286,6 +286,59 @@ def test_every_score_carries_at_least_one_reason(levels):
     assert cloud_sea.reasons
 
 
+# --- the inverse case -----------------------------------------------------
+
+
+def _fanal() -> Spot:
+    return next(s for s in load_spots() if s.id == "fanal")
+
+
+def test_fanal_scores_the_mist_as_the_attraction():
+    """The regression the README has carried since day one.
+
+    Thick cloud where you stand is what the ordinary scorer penalises hardest,
+    and at Fanal it is the entire reason to drive there. The two must not come
+    out the same.
+    """
+    fanal = _fanal()
+    misty = make_hour(make_levels((300, 0.1, 20.0), (1150, 0.95, 14.0), (2100, 0.1, 11.0)))
+    _, fog, _ = score_hour(fanal, misty)
+    assert fog.value > 80
+    assert any("forest" in reason for reason in fog.reasons)
+
+    # And the same sky at an ordinary viewpoint of the same height is a wasted
+    # morning, which is what it always was.
+    ordinary = replace(fanal, id="not-fanal", fog_is_the_view=False)
+    _, sea, _ = score_hour(ordinary, misty)
+    assert sea.value < 20
+
+
+def test_fanal_without_mist_is_the_low_score():
+    fanal = _fanal()
+    clear = make_hour(make_levels((300, 0.0, 20.0), (1150, 0.0, 14.0), (2100, 0.0, 11.0)))
+    _, fog, _ = score_hour(fanal, clear)
+    assert fog.value < 10
+    assert any("clear air" in reason for reason in fog.reasons)
+
+
+def test_rain_is_not_mist():
+    """Standing in a cloud is the draw. Standing in a downpour is not."""
+    fanal = _fanal()
+    levels = make_levels((300, 0.1, 20.0), (1150, 0.95, 14.0), (2100, 0.1, 11.0))
+    dry = score_hour(fanal, make_hour(levels))[1]
+    wet = score_hour(fanal, make_hour(levels, precipitation_mm=3.0))[1]
+    assert wet.value < dry.value
+    assert any("rain" in reason for reason in wet.reasons)
+
+
+def test_every_fog_score_still_carries_a_reason():
+    fanal = _fanal()
+    for cover in (0.0, 0.3, 0.95):
+        levels = make_levels((300, 0.1, 20.0), (1150, cover, 14.0), (2100, 0.1, 11.0))
+        _, fog, _ = score_hour(fanal, make_hour(levels))
+        assert fog.reasons
+
+
 # --- golden cases against captured real output ----------------------------
 
 

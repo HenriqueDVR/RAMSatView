@@ -41,9 +41,14 @@ const DICTIONARY = {
     "verdict.above": "Acima do mar de nuvens",
     "verdict.inside": "Cume dentro da nuvem",
     "verdict.none": "Sem mar de nuvens previsto",
+    // Fanal: a nevoa e o motivo da visita, nao o que a estraga.
+    "verdict.fog": "Floresta na nevoa",
+    "verdict.no_fog": "Sem nevoa prevista",
+    "calima.slight": "Ligeira bruma do Sara",
+    "calima.noticeable": "Poeira do Sara a toldar a vista",
+    "calima.heavy": "Calima forte - sem vista",
     "profile.title": "Perfil vertical",
-    "profile.caption":
-      "Perfil vertical: nuvem ate {deck} m, cume a {summit} m",
+    "profile.caption": "Perfil vertical: nuvem ate {deck} m, cume a {summit} m",
     "profile.at_summit": "Nuvem no cume {pct}%",
     "state.loading": "A carregar condicoes...",
     "state.error": "Nao foi possivel carregar as condicoes.",
@@ -94,8 +99,15 @@ const DICTIONARY = {
     "verdict.above": "Above the cloud sea",
     "verdict.inside": "Summit inside the cloud",
     "verdict.none": "No cloud deck forecast",
+    // Fanal: the mist is the reason to go, not the thing that spoils it.
+    "verdict.fog": "Forest in the mist",
+    "verdict.no_fog": "No mist forecast",
+    "calima.slight": "Slight Saharan haze",
+    "calima.noticeable": "Saharan dust hazing the view",
+    "calima.heavy": "Heavy calima - no view",
     "profile.title": "Vertical profile",
-    "profile.caption": "Vertical profile: cloud to {deck} m, summit at {summit} m",
+    "profile.caption":
+      "Vertical profile: cloud to {deck} m, summit at {summit} m",
     "profile.at_summit": "Cloud at summit {pct}%",
     "state.loading": "Loading conditions...",
     "state.error": "Could not load conditions.",
@@ -132,20 +144,20 @@ export type TranslationKey = keyof (typeof DICTIONARY)["en"];
 export function translate(
   locale: Locale,
   key: TranslationKey,
-  vars?: Record<string, string | number>
+  vars?: Record<string, string | number>,
 ): string {
   const text: string = DICTIONARY[locale][key] ?? DICTIONARY.en[key] ?? key;
   if (!vars) return text;
   return Object.entries(vars).reduce(
     (out, [name, value]) => out.replace(`{${name}}`, String(value)),
-    text
+    text,
   );
 }
 
 /** The bound translate function components take as a prop. */
 export type Translate = (
   key: TranslationKey,
-  vars?: Record<string, string | number>
+  vars?: Record<string, string | number>,
 ) => string;
 
 export function translator(locale: Locale): Translate {

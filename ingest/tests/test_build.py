@@ -173,6 +173,83 @@ def test_document_stays_within_the_size_budget(offline_document):
     assert len(json.dumps(document, ensure_ascii=False)) < 35_000
 
 
+def test_spot_hours_travel_as_a_header_and_not_as_arrays(offline_document):
+    """The whole point of the blob. Five arrays of 240 numbers per spot is
+    sixty kilobytes of a document with a 35KB ceiling."""
+    document, _ = offline_document
+    meta = document["spot_hours"]
+    assert meta["file"] == "spot-hours.bin"
+    assert meta["bytes"] == len(meta["spots"]) * len(meta["series"]) * meta["count"]
+    # And nothing hourly leaked into the entries themselves.
+    assert all("hours" not in entry for entry in document["spots"])
+
+
+def test_every_spot_with_a_forecast_is_in_the_blob(offline_document):
+    """Beaches too. The scrubber moves the map for a beach as much as for a
+    viewpoint, and air temperature and wind are the same question there."""
+    document, _ = offline_document
+    named = set(document["spot_hours"]["spots"])
+    assert {e["id"] for e in document["spots"] if e["type"] == "viewpoint"} <= named
+
+
+def test_validate_rejects_spot_hours_of_the_wrong_length(offline_document):
+    document, spots = offline_document
+    meta = document["spot_hours"]
+    with pytest.raises(ValidationError, match="spot hours blob is"):
+        validate(document, spots, hours_length=meta["bytes"] + 1)
+
+
+def test_validate_rejects_spot_hours_naming_a_spot_that_is_not_published(
+    offline_document,
+):
+    """The header is an index. A spot in it that is not in the document shifts
+    every block after it, and the map then shows one spot's weather under
+    another spot's name."""
+    document, spots = offline_document
+    meta = dict(document["spot_hours"])
+    meta["spots"] = [*meta["spots"], "somewhere-else"]
+    meta["bytes"] = len(meta["spots"]) * len(meta["series"]) * meta["count"]
+    with pytest.raises(ValidationError, match="unpublished spots"):
+        validate({**document, "spot_hours": meta}, spots)
+
+
+def test_history_does_not_shift_the_days_that_get_scored():
+    """The regression this guards is a week-long one.
+
+    The hourly series needs the forecast to reach backwards, and Open-Meteo
+    returns a daily sunrise for every past day it is asked for. Indexed
+    straight, that scored last week's mornings and published them as the
+    forecast - with the beaches on the correct days beside them, because the
+    marine source has no history to shift.
+    """
+    spots = by_type(load_spots(), "viewpoint")
+    payload = json.loads(
+        (build.FIXTURES / "openmeteo_viewpoints.json").read_text(encoding="utf-8")
+    )
+
+    class Stub(build.OpenMeteoAtmosphere):
+        def __init__(self):
+            super().__init__(session=object())
+
+    stub = Stub()
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "ingest.sources.openmeteo.get_json", lambda *a, **k: payload
+    )
+    try:
+        without = stub.fetch(spots, 72, past_days=0)
+        with_history = stub.fetch(spots, 72, past_days=2)
+    finally:
+        monkeypatch.undo()
+
+    first = spots[0].id
+    # The hours keep every past hour - that is what they are fetched for.
+    assert len(with_history[first].hours) == len(without[first].hours)
+    # The days do not: two days of history means the first two sunrises go.
+    assert with_history[first].sunrise == without[first].sunrise[2:]
+    assert with_history[first].sunset == without[first].sunset[2:]
+
+
 def test_validate_rejects_an_empty_profile(offline_document):
     document, spots = offline_document
     entries = json.loads(json.dumps(document["spots"]))
@@ -316,6 +393,18 @@ def test_a_blocked_ipma_does_not_stop_the_publish(monkeypatch):
         raise RuntimeError("403 Client Error: Forbidden")
 
     monkeypatch.setattr(build.IPMA, "fetch", forbidden)
+
+    # The satellite too. Every other source in this test is patched, and this
+    # one was not - so the only test in the suite that runs with `offline=False`
+    # was reaching AWS for nine global mosaic files, some sixty megabytes, on
+    # every single run. That is most of what the ingest suite costs, and it is
+    # exactly the dependency `pages.yml` says the tests must never have: an S3
+    # hiccup would have shown up here as a failing test about IPMA.
+    monkeypatch.setattr(
+        build.GmgsiLongwave,
+        "fetch",
+        lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("no satellite")),
+    )
 
     document = run(out=None, dry_run=True, offline=False)
     assert document["official"]["source"] is None

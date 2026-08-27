@@ -26,7 +26,7 @@ function profile(baseM: number, topM: number): [number, number][] {
 
 export function fixtureConditions(now = Date.now()): Conditions {
   return {
-    schema_version: 2,
+    schema_version: 3,
     generated_at: new Date(now - 12 * 60_000).toISOString(),
     stale_at: new Date(now + 3 * 3600_000).toISOString(),
     attribution: ["Open-Meteo", "IPMA", "EOX Sentinel-2 cloudless"],
@@ -37,6 +37,10 @@ export function fixtureConditions(now = Date.now()): Conditions {
     // Same reasoning: the observed field is bytes, and observedCloud.spec.ts
     // is where its decoding and its colour ramp are pinned.
     cloud_observed: null,
+    // And the same again for the per-spot hourly series. The snapshots are of
+    // the day summary, which is what the panel shows when no hour is in play;
+    // spotHours.spec.ts covers the decoding and hours.spec.ts the wiring.
+    spot_hours: null,
     official: {
       source: "IPMA",
       issued_at: new Date(now - 40 * 60_000).toISOString(),
@@ -177,7 +181,9 @@ export function fixtureConditions(now = Date.now()): Conditions {
 export const FIXTURE_GRID = {
   cols: 4,
   rows: 3,
-  altitudes: [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000],
+  altitudes: [
+    0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000,
+  ],
   hours: 7,
 };
 
@@ -198,6 +204,83 @@ export function fixtureGridHeader(now = Date.now()) {
     times,
     bytes: times.length * FIXTURE_GRID.altitudes.length * cells,
   };
+}
+
+/**
+ * Per-spot hourly series on the same clock as the grid above.
+ *
+ * The deck is driven *down* through the summits across the hours: the first
+ * hours put its top well above Arieiro, the last well below. That is the one
+ * transition the panel has to follow - a spot that reads "summit inside the
+ * cloud" at one end of the scrubber and "above the cloud sea" at the other -
+ * and a stuck readout shows up as a verdict that never changes.
+ */
+export function fixtureSpotHoursHeader(grid = fixtureGridHeader()) {
+  const series = [
+    { name: "deck_base_m", scale: 20, offset: 0 },
+    { name: "deck_top_m", scale: 20, offset: 0 },
+    { name: "cloud_at_summit", scale: 0.005, offset: 0 },
+    { name: "temperature_c", scale: 0.25, offset: -25 },
+    { name: "wind_kmh", scale: 0.5, offset: 0 },
+    { name: "aod", scale: 0.01, offset: 0 },
+  ];
+  const spots = ["pico-arieiro", "pico-ruivo", "porto-santo-beach"];
+  return {
+    file: "spot-hours.bin",
+    generated_at: grid.generated_at,
+    t0: grid.times[0],
+    step_h: 1,
+    count: grid.times.length,
+    spots,
+    series,
+    missing: 255,
+    bytes: spots.length * series.length * grid.times.length,
+  };
+}
+
+export function fixtureSpotHoursBytes(
+  header = fixtureSpotHoursHeader(),
+): Uint8Array {
+  const values = new Uint8Array(header.bytes);
+  const { count, spots, series } = header;
+  let offset = 0;
+  for (let spot = 0; spot < spots.length; spot++) {
+    for (const channel of series) {
+      for (let hour = 0; hour < count; hour++) {
+        const through = count > 1 ? hour / (count - 1) : 0;
+        // 2600m down to 900m: starts over both summits, ends under them.
+        const top = 2600 - 1700 * through;
+        let value: number;
+        switch (channel.name) {
+          case "deck_base_m":
+            value = 400;
+            break;
+          case "deck_top_m":
+            value = top;
+            break;
+          case "cloud_at_summit":
+            // Cloudy at the summit only while the deck is still above it.
+            value = top > 1900 ? 0.9 : 0.02;
+            break;
+          case "temperature_c":
+            value = 8 + hour;
+            break;
+          case "aod":
+            // Clean maritime air throughout. The calima wording is exercised
+            // in spotHours.spec.ts; here it must simply not appear.
+            value = 0.1;
+            break;
+          default:
+            value = 5 + hour;
+        }
+        values[offset++] = Math.max(
+          0,
+          Math.min(254, Math.round((value - channel.offset) / channel.scale)),
+        );
+      }
+    }
+  }
+  return values;
 }
 
 /**

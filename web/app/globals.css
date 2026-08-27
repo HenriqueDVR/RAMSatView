@@ -1600,3 +1600,24 @@ body {
     display: none;
   }
 }
+
+/* Saharan dust, said in words beside the verdict.
+   It gets its own line rather than a fact tile because it is not a measurement
+   anyone wants a number for - it is the difference between driving up and not,
+   and nothing else on the panel can show it: the vertical profile is condensed
+   water, and dust does not condense. */
+.calima {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2) var(--s-3);
+  border-left: 3px solid currentColor;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: rgb(180 120 40 / 0.12);
+  color: #e0a860;
+  font-size: var(--t-sm);
+}
+
+.calima-heavy {
+  background: rgb(200 90 40 / 0.18);
+  color: #f0a070;
+  font-weight: 600;
+}

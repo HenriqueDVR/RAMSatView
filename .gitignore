@@ -14,6 +14,7 @@ dist/
 web/public/conditions.json
 web/public/cloud-grid.bin
 web/public/cloud-observed.bin
+web/public/spot-hours.bin
 .DS_Store
 
 web/public/maplibre/

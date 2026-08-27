@@ -18,6 +18,7 @@ import {
 } from "@/lib/conditions";
 import { loadCloudGrid, timeIndexFor, type CloudGrid } from "@/lib/cloudGrid";
 import { loadObservedCloud, type ObservedCloud } from "@/lib/observedCloud";
+import { loadSpotHours, type SpotHours } from "@/lib/spotHours";
 import { nearestIndex } from "@/lib/timeline";
 import { translator, type Locale } from "@/lib/i18n";
 import {
@@ -81,6 +82,7 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
   const [layers, setLayers] = useState<LayerState>(DEFAULT_LAYERS);
   const [grid, setGrid] = useState<CloudGrid | null>(null);
   const [observed, setObserved] = useState<ObservedCloud | null>(null);
+  const [spotHours, setSpotHours] = useState<SpotHours | null>(null);
   // Null until the volume arrives, then the sunrise the forecast is about -
   // not "now". Held as an index rather than a Date so the slider, the shader
   // and the lighting cannot drift a minute apart from each other.
@@ -150,10 +152,33 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
     };
   }, [conditions]);
 
+  // Eighteen kilobytes, fetched alongside the other two and failing the same
+  // way: without it the readouts stay on the day summary, which is where they
+  // were before the series existed.
+  useEffect(() => {
+    const header = conditions?.spot_hours;
+    if (!header) return;
+    let cancelled = false;
+    loadSpotHours(header, conditionsUrl())
+      .then((loaded) => {
+        if (!cancelled) setSpotHours(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setSpotHours(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conditions]);
+
   const times = useMemo(
     () => grid?.timesMs.map((ms) => new Date(ms)) ?? [],
     [grid],
   );
+
+  // The instant the panels should describe: whichever hour the scrubber is on.
+  // Undefined before the volume has landed, and the panels then show the day.
+  const shownMs = hour === null ? undefined : times[hour]?.getTime();
 
   // Where the satellite's span falls on the forecast's track. The two axes
   // come from different sources and only overlap over the recent past, so this
@@ -242,6 +267,8 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
           observed={observed}
           timeIndex={hour ?? 0}
           time={hour === null ? undefined : times[hour]}
+          hours={spotHours}
+          atMs={shownMs}
         />
       </div>
 
@@ -277,6 +304,8 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
         t={t}
         sheet={sheet}
         onSheetChange={setSheet}
+        hours={spotHours}
+        atMs={shownMs}
         legal={
           <>
             {/* Placed with the data, not buried behind a link. We report

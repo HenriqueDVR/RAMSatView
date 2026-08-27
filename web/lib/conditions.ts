@@ -8,9 +8,12 @@
 
 import type { CloudGridHeader } from "@/lib/cloudGrid";
 import type { ObservedCloudHeader } from "@/lib/observedCloud";
+import type { SpotHoursHeader } from "@/lib/spotHours";
 import { withBase } from "@/lib/basePath";
 
-export const SCHEMA_VERSION = 2;
+// 3: every spot carries its own hourly series, so the readouts follow the
+// scrubber instead of staying on the day summary while the map moves.
+export const SCHEMA_VERSION = 3;
 
 export type Score = {
   value: number;
@@ -32,6 +35,14 @@ export type ViewpointDay = {
   cloud_sea: Score;
   deck_base_m: number | null;
   deck_top_m: number | null;
+  /** Saharan dust over the sunrise window. Absent from documents published
+   *  before the air-quality source existed, and absent when that fetch failed
+   *  - which is not the same as clear air, and is shown as nothing at all. */
+  calima?: {
+    severity: CalimaSeverity;
+    aod: number | null;
+    dust_ug_m3: number | null;
+  };
   inversion_c: number;
   temperature_c: number;
   wind_kmh: number;
@@ -68,6 +79,9 @@ export type SpotEntry = {
   lon: number;
   elevation_m: number;
   ipma_area: string;
+  /** True where cloud at the viewpoint is the attraction rather than the thing
+   *  that ruins it. Fanal, and so far only Fanal. */
+  fog_is_the_view?: boolean;
   notes: string | null;
   days: (ViewpointDay | BeachDay)[];
 };
@@ -97,6 +111,9 @@ export type Conditions = {
    * pretending otherwise is the one thing this layer must never do.
    */
   cloud_observed: ObservedCloudHeader | null;
+  /** Per-spot hourly scalars, in a blob beside the document. Null when the
+   *  ingest published none, which leaves the readouts on the day summary. */
+  spot_hours: SpotHoursHeader | null;
   spots: SpotEntry[];
 };
 
@@ -156,7 +173,7 @@ export async function loadConditions(): Promise<LoadResult> {
 
     if (conditions.schema_version !== SCHEMA_VERSION) {
       throw new Error(
-        `schema ${conditions.schema_version}, expected ${SCHEMA_VERSION}`
+        `schema ${conditions.schema_version}, expected ${SCHEMA_VERSION}`,
       );
     }
     writeCache(conditions);
@@ -169,7 +186,7 @@ export async function loadConditions(): Promise<LoadResult> {
 }
 
 export function isViewpointDay(
-  day: ViewpointDay | BeachDay
+  day: ViewpointDay | BeachDay,
 ): day is ViewpointDay {
   return "cloud_sea" in day;
 }
@@ -206,16 +223,76 @@ export function cloudAt(profile: ProfilePoint[], altitudeM: number): number {
 const DECK_THRESHOLD = 0.35;
 const SUMMIT_MARGIN_M = 150;
 
-export type DeckVerdict = "above" | "inside" | "none";
+export type DeckVerdict = "above" | "inside" | "none" | "fog" | "no_fog";
+
+export type CalimaSeverity = "none" | "slight" | "noticeable" | "heavy";
+
+/**
+ * Where the dust stops being worth a word and starts being the story.
+ *
+ * These mirror ingest/scoring/calima.py, which is where the reasoning lives.
+ * The point of showing it at all: nothing in the cloud profile sees dust, so a
+ * calima morning scores as perfectly clear and hands you an orange horizon.
+ */
+export function calimaSeverity(aod: number | null): CalimaSeverity {
+  if (aod === null) return "none";
+  if (aod >= 0.7) return "heavy";
+  if (aod >= 0.4) return "noticeable";
+  if (aod >= 0.25) return "slight";
+  return "none";
+}
 
 /**
  * The one sentence the whole viewpoint card exists to answer: will you be
  * standing above the cloud, inside it, or is there no deck at all?
  */
-export function deckVerdict(day: ViewpointDay, elevationM: number): DeckVerdict {
+export function deckVerdict(
+  day: ViewpointDay,
+  elevationM: number,
+  fogIsTheView = false,
+): DeckVerdict {
+  // At Fanal the same sky gets the opposite words. The laurel forest in mist
+  // is what people drive there for, so "inside the cloud" is the good answer
+  // and reporting it as a summit swallowed by weather told them to stay home
+  // on the one morning worth going.
+  if (fogIsTheView) {
+    return cloudAt(day.profile, elevationM) >= DECK_THRESHOLD
+      ? "fog"
+      : "no_fog";
+  }
   if (cloudAt(day.profile, elevationM) >= DECK_THRESHOLD) return "inside";
   const top = day.deck_top_m;
   if (top !== null && top < elevationM - SUMMIT_MARGIN_M) return "above";
+  return "none";
+}
+
+/**
+ * The same verdict, from one published hour rather than from the day summary.
+ *
+ * Deliberately the same two questions in the same order as `deckVerdict`, and
+ * against the same thresholds: if these two ever disagreed about a morning,
+ * the map and the panel beside it would disagree in front of the user, which
+ * is the exact failure the hourly series exists to close.
+ *
+ * Null when the hour published nothing usable - a hole in the series is not a
+ * clear sky, and the caller falls back to the day.
+ */
+export function hourVerdict(
+  hour: { cloudAtSummit: number | null; deckTopM: number | null },
+  elevationM: number,
+  fogIsTheView = false,
+): DeckVerdict | null {
+  if (hour.cloudAtSummit === null && hour.deckTopM === null) return null;
+  if (fogIsTheView) {
+    if (hour.cloudAtSummit === null) return null;
+    return hour.cloudAtSummit >= DECK_THRESHOLD ? "fog" : "no_fog";
+  }
+  if (hour.cloudAtSummit !== null && hour.cloudAtSummit >= DECK_THRESHOLD) {
+    return "inside";
+  }
+  if (hour.deckTopM !== null && hour.deckTopM < elevationM - SUMMIT_MARGIN_M) {
+    return "above";
+  }
   return "none";
 }
 

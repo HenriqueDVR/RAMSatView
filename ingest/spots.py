@@ -36,6 +36,12 @@ class Spot:
     # Multiplier on wave height for spots that suffer more (rock pools, dive
     # sites) or less (breakwater-sheltered bays) than the open coast.
     swell_sensitivity: float = 1.0
+    # Fanal, and only Fanal so far: the laurel forest in mist is what people
+    # drive there for, so cloud at the viewpoint is the attraction rather than
+    # the thing that ruins it. Everywhere else the same weather is a wasted
+    # morning, and scoring both the same way told anyone asking about Fanal to
+    # stay in bed on exactly the mornings they should go.
+    fog_is_the_view: bool = False
     notes: str | None = None
 
     def name(self, locale: str) -> str:

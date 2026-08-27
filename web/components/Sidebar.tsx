@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import SpotDetail from "@/components/SpotDetail";
 import {
   deckVerdict,
   headlineScore,
+  hourVerdict,
   isViewpointDay,
   type SpotEntry,
 } from "@/lib/conditions";
 import type { Locale, Translate, TranslationKey } from "@/lib/i18n";
+import { spotHourAt, type SpotHours } from "@/lib/spotHours";
 
 /**
  * The list of spots and the one that is selected, beside the map.
@@ -70,6 +72,8 @@ export default function Sidebar({
   sheet,
   onSheetChange,
   legal,
+  hours = null,
+  atMs,
 }: {
   spots: SpotEntry[];
   selectedId: string | null;
@@ -78,6 +82,11 @@ export default function Sidebar({
   t: Translate;
   sheet: SheetState;
   onSheetChange: (state: SheetState) => void;
+  /** The published hourly series, and the instant the scrubber is on. Together
+   *  they make every row, the summary and the detail describe the same hour
+   *  the map is drawing. */
+  hours?: SpotHours | null;
+  atMs?: number;
   /** The data credit and the safety notice. They ride inside the sheet on a
    *  phone because nothing outside it is reachable once the map is the page;
    *  the tile licence itself is on MapLibre's own attribution control, which
@@ -90,6 +99,14 @@ export default function Sidebar({
   const shown =
     spots.find((spot) => spot.id === selectedId) ?? spots[0] ?? null;
   const listRef = useRef<HTMLOListElement | null>(null);
+
+  // Looked up per spot rather than inside a row: the whole list is redrawn
+  // while the scrubber is dragged.
+  const hourFor = useCallback(
+    (spot: SpotEntry) =>
+      hours && atMs !== undefined ? spotHourAt(hours, spot.id, atMs) : null,
+    [hours, atMs],
+  );
 
   // Where the thumb went down, and whether it has travelled far enough to be a
   // drag. Refs rather than state: this changes on every pointer event and
@@ -192,9 +209,12 @@ export default function Sidebar({
           {spots.map((spot) => {
             const score = headlineScore(spot);
             const day = spot.days[0];
+            const at = hourFor(spot);
             const verdict =
               spot.type === "viewpoint" && day && isViewpointDay(day)
-                ? deckVerdict(day, spot.elevation_m)
+                ? ((at &&
+                    hourVerdict(at, spot.elevation_m, spot.fog_is_the_view)) ??
+                  deckVerdict(day, spot.elevation_m, spot.fog_is_the_view))
                 : null;
             const selected = spot.id === shown?.id;
             return (
@@ -230,7 +250,14 @@ export default function Sidebar({
           })}
         </ol>
 
-        {shown && <SpotDetail spot={shown} locale={locale} t={t} />}
+        {shown && (
+          <SpotDetail
+            spot={shown}
+            locale={locale}
+            t={t}
+            hour={hourFor(shown)}
+          />
+        )}
 
         {legal}
       </div>

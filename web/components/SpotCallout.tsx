@@ -3,10 +3,12 @@
 import {
   deckVerdict,
   headlineScore,
+  hourVerdict,
   isViewpointDay,
   type SpotEntry,
 } from "@/lib/conditions";
 import type { Locale, Translate, TranslationKey } from "@/lib/i18n";
+import type { SpotHour } from "@/lib/spotHours";
 
 /**
  * The headline for one spot, anchored to its own pin.
@@ -38,16 +40,22 @@ export default function SpotCallout({
   spot,
   locale,
   t,
+  hour = null,
 }: {
   spot: SpotEntry;
   locale: Locale;
   t: Translate;
+  /** The spot's own numbers at the hour the scrubber is on. The callout sits
+   *  directly on the map, so a verdict here that disagreed with the deck drawn
+   *  behind it would be the contradiction at its most visible. */
+  hour?: SpotHour | null;
 }) {
   const score = headlineScore(spot);
   const day = spot.days[0];
   const verdict =
     spot.type === "viewpoint" && day && isViewpointDay(day)
-      ? deckVerdict(day, spot.elevation_m)
+      ? ((hour && hourVerdict(hour, spot.elevation_m, spot.fog_is_the_view)) ??
+        deckVerdict(day, spot.elevation_m, spot.fog_is_the_view))
       : null;
 
   return (

@@ -24,11 +24,25 @@ from pathlib import Path
 from ingest.scoring.beach import score_beach
 from ingest.scoring.cloudtop import ObservedCloud, fuse, nearest_hour_levels
 from ingest.scoring.cloudtop import header as observed_header
-from ingest.scoring.inversion import score_sunrise
+from ingest.scoring.spothours import SpotHours
+from ingest.scoring.spothours import encode as spothours_encode
+from ingest.scoring.spothours import header as spothours_header
+from ingest.scoring.inversion import (
+    Score,
+    cloud_at,
+    find_deck,
+    score_sunrise,
+    temperature_at,
+)
 from ingest.sources.base import AtmosphereForecast, OfficialStatus
 from ingest.sources.gmgsi import GmgsiLongwave
 from ingest.sources.ipma import IPMA, active_warnings
+from ingest.scoring.calima import Calima
+from ingest.scoring.calima import assess as assess_calima
+from ingest.scoring.calima import worst as worst_calima
+from ingest.sources.base import AirForecast
 from ingest.sources.openmeteo import OpenMeteoAtmosphere
+from ingest.sources.openmeteo_air import OpenMeteoAir
 from ingest.sources.openmeteo_grid import (
     ALTITUDES,
     CloudGrid,
@@ -38,7 +52,9 @@ from ingest.sources.openmeteo_grid import header as grid_header
 from ingest.sources.openmeteo_marine import OpenMeteoMarine
 from ingest.spots import REPO_ROOT, Spot, by_type, load_spots
 
-SCHEMA_VERSION = 2
+# 3: every spot carries its own hourly series, so the readouts follow the
+# scrubber instead of staying on the day summary while the map moves.
+SCHEMA_VERSION = 3
 FORECAST_HOURS = 72
 FORECAST_DAYS = 3
 
@@ -90,17 +106,114 @@ def _daily_wind(forecast: AtmosphereForecast | None, day) -> float | None:
     return sum(h.wind_speed_10m_kmh for h in hours) / len(hours)
 
 
-def build_viewpoint(spot: Spot, forecast: AtmosphereForecast) -> dict:
+def _round(value: float | None, places: int) -> float | None:
+    return None if value is None else round(value, places)
+
+
+def build_hours(
+    spot: Spot,
+    forecast: AtmosphereForecast | None,
+    air: AirForecast | None = None,
+) -> tuple[datetime, dict[str, list[float | None]]] | None:
+    """The spot's own numbers, hour by hour, as columns ready to be quantised.
+
+    Scalars only. A full profile per hour per spot would duplicate what
+    cloud-grid.bin already carries one byte to the cell, and the sidebar has
+    never drawn more than these five numbers.
+    """
+    if forecast is None or not forecast.hours:
+        return None
+
+    hours = sorted(forecast.hours, key=lambda hour: hour.time)
+    columns: dict[str, list[float | None]] = {
+        "deck_base_m": [],
+        "deck_top_m": [],
+        "cloud_at_summit": [],
+        "temperature_c": [],
+        "wind_kmh": [],
+        "aod": [],
+    }
+
+    # Matched by clock, not by index: air quality is a separate request to a
+    # separate model and there is no promise its hours line up with the
+    # atmosphere's.
+    dust_at = {hour.time: hour.aod for hour in (air.hours if air else ())}
+
+    for hour in hours:
+        # Below the summit, the same bound `score_hour` uses: a deck that
+        # starts above the viewpoint is not a deck you stand over.
+        base, top = find_deck(hour.levels, below_m=spot.elevation_m)
+        columns["deck_base_m"].append(base)
+        columns["deck_top_m"].append(top)
+        columns["cloud_at_summit"].append(
+            cloud_at(hour.levels, spot.elevation_m) if hour.levels else None
+        )
+        columns["temperature_c"].append(
+            temperature_at(hour.levels, spot.elevation_m) if hour.levels else None
+        )
+        columns["wind_kmh"].append(hour.wind_speed_10m_kmh)
+        columns["aod"].append(dust_at.get(hour.time))
+
+    return hours[0].time, columns
+
+
+def _calima_for(
+    air: AirForecast | None, sunrise: datetime, window_h: float = 1.5
+) -> Calima:
+    """The dust over the sunrise window, matched by clock.
+
+    Air quality is a separate request to a separate model, so its hours are
+    matched to the sunrise rather than assumed to line up by index. The worst
+    hour in the window wins - a clear hour either side of a plume would
+    otherwise hide the plume, and the plume is the thing worth being told.
+    """
+    if air is None:
+        return assess_calima(None)
+    span = timedelta(hours=window_h)
+    return worst_calima(
+        [
+            assess_calima(hour.aod, hour.dust_ug_m3)
+            for hour in air.hours
+            if abs(hour.time - sunrise) <= span
+        ]
+    )
+
+
+def build_viewpoint(
+    spot: Spot, forecast: AtmosphereForecast, air: AirForecast | None = None
+) -> dict:
     days = []
     for index in range(FORECAST_DAYS):
         outlook = score_sunrise(spot, forecast, index)
         if outlook is None:
             continue
+        # Dust does not condense, so nothing in the vertical profile sees it:
+        # a calima morning reads as perfectly clear right up until you are
+        # standing in it looking at an orange horizon. The haze is applied to
+        # visibility here, after the profile has had its say.
+        calima = _calima_for(air, outlook.sunrise_utc)
+        visibility = outlook.visibility
+        if calima.reason is not None:
+            visibility = Score(
+                round(visibility.value * calima.clarity, 1),
+                visibility.confidence,
+                [*visibility.reasons, calima.reason],
+            )
+
         days.append(
             {
                 "date": outlook.day.isoformat(),
                 "sunrise_utc": _iso(outlook.sunrise_utc),
-                "visibility": _score(outlook.visibility),
+                "visibility": _score(visibility),
+                "calima": {
+                    "severity": calima.severity,
+                    "aod": None if calima.aod is None else round(calima.aod, 3),
+                    "dust_ug_m3": (
+                        None
+                        if calima.dust_ug_m3 is None
+                        else round(calima.dust_ug_m3, 1)
+                    ),
+                },
                 "cloud_sea": _score(outlook.cloud_sea),
                 "deck_base_m": outlook.deck_base_m,
                 "deck_top_m": outlook.deck_top_m,
@@ -164,6 +277,42 @@ def _reference_levels(
     return ()
 
 
+def pack_hours(
+    spots: list[Spot],
+    atmosphere: dict[str, AtmosphereForecast],
+    air: dict[str, AirForecast] | None = None,
+) -> SpotHours | None:
+    """Every spot's hourly columns, on one shared clock, as one blob.
+
+    Every series comes from the same Open-Meteo response, so they all start at
+    the same hour and run the same length. This refuses rather than pads if
+    that ever stops being true: a blob whose spots disagree about what hour an
+    index means is worse than no blob at all, because nothing downstream could
+    detect it.
+    """
+    columns: dict[str, dict[str, list[float | None]]] = {}
+    t0: datetime | None = None
+    for spot in spots:
+        built = build_hours(spot, atmosphere.get(spot.id), (air or {}).get(spot.id))
+        if built is None:
+            continue
+        t0, columns[spot.id] = built
+
+    if not columns or t0 is None:
+        return None
+
+    lengths = {len(series["wind_kmh"]) for series in columns.values()}
+    if len(lengths) != 1:
+        raise ValueError(f"spots disagree about their hour count: {sorted(lengths)}")
+
+    return spothours_encode(
+        spot_ids=sorted(columns),
+        t0=t0,
+        count=lengths.pop(),
+        columns=columns,
+    )
+
+
 def assemble(
     spots: list[Spot],
     atmosphere: dict[str, AtmosphereForecast],
@@ -172,6 +321,8 @@ def assemble(
     attributions: list[str],
     grid: CloudGrid | None = None,
     observed: ObservedCloud | None = None,
+    hours: SpotHours | None = None,
+    air: dict[str, AirForecast] | None = None,
 ) -> dict:
     now = datetime.now(tz=timezone.utc)
     entries = []
@@ -190,15 +341,20 @@ def assemble(
             "lon": spot.lon,
             "elevation_m": spot.elevation_m,
             "ipma_area": spot.ipma_area,
+            # The web side needs this to word the verdict: at Fanal "inside the
+            # cloud" is the good answer, and saying so is the whole point of
+            # scoring it differently.
+            "fog_is_the_view": spot.fog_is_the_view,
             "notes": spot.notes,
         }
         if spot.type == "viewpoint":
-            base.update(build_viewpoint(spot, forecast))
+            base.update(build_viewpoint(spot, forecast, (air or {}).get(spot.id)))
         else:
             spot_marine = marine.get(spot.id)
             if spot_marine is None:
                 continue
             base.update(build_beach(spot, spot_marine, forecast, status))
+
         entries.append(base)
 
     return {
@@ -226,6 +382,15 @@ def assemble(
         "cloud_observed": (
             observed_header(observed, now) if observed is not None else None
         ),
+        # The per-spot hourly series, quantised beside the document rather than
+        # written into it. Absent when no spot came back with a forecast, which
+        # is the same condition that already stops the run.
+        # The per-spot hourly series, quantised into a blob beside the document
+        # rather than written into it - see scoring/spothours.py. Absent when
+        # the atmosphere fetch gave nothing, and absent is survivable: the
+        # readouts then fall back to the day summary, which is where they were
+        # before this existed.
+        "spot_hours": spothours_header(hours, now) if hours is not None else None,
         "spots": entries,
     }
 
@@ -323,11 +488,46 @@ def _validate_observed(document: dict, blob_length: int | None) -> None:
         raise ValidationError("observed cloud and document were generated apart")
 
 
+def _validate_spot_hours(document: dict, blob_length: int | None) -> None:
+    """The third blob, and the one whose header carries an index.
+
+    A reader finds a spot's block by that spot's position in `spots`, so a
+    header that lists a different number of spots than the blob was packed for
+    does not fail loudly - it reads the wrong spot's weather and shows it
+    under the right spot's name. Checked here for that reason.
+    """
+    meta = document.get("spot_hours")
+    if meta is None:
+        return
+
+    expected = len(meta["spots"]) * len(meta["series"]) * meta["count"]
+    if meta["bytes"] != expected:
+        raise ValidationError(
+            f"spot hours declares {meta['bytes']} bytes for {expected} samples"
+        )
+    if blob_length is not None and blob_length != meta["bytes"]:
+        raise ValidationError(
+            f"spot hours blob is {blob_length} bytes, document says {meta['bytes']}"
+        )
+    if not meta["spots"]:
+        raise ValidationError("spot hours has no spots")
+    if meta["count"] < 1:
+        raise ValidationError("spot hours has no time axis")
+
+    published = {entry["id"] for entry in document.get("spots") or []}
+    unknown = set(meta["spots"]) - published
+    if unknown:
+        # A spot in the blob that is not in the document shifts every index
+        # after it, silently.
+        raise ValidationError(f"spot hours names unpublished spots: {sorted(unknown)}")
+
+
 def validate(
     document: dict,
     spots: list[Spot],
     blob_length: int | None = None,
     observed_length: int | None = None,
+    hours_length: int | None = None,
 ) -> None:
     if document.get("schema_version") != SCHEMA_VERSION:
         raise ValidationError("schema_version mismatch")
@@ -367,6 +567,7 @@ def validate(
 
     _validate_grid(document, blob_length)
     _validate_observed(document, observed_length)
+    _validate_spot_hours(document, hours_length)
 
     stale_at = datetime.fromisoformat(document["stale_at"].replace("Z", "+00:00"))
     if stale_at <= datetime.now(tz=timezone.utc):
@@ -395,11 +596,14 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
 
     grid: CloudGrid | None = None
     observed: ObservedCloud | None = None
+    air: dict[str, AirForecast] = {}
 
     if offline:
         # Fixtures cover viewpoints and beaches separately and carry no wind
         # for beaches, so only the viewpoint half round-trips faithfully here.
         atmosphere, marine, status = _load_offline(spots)
+        # No dust in the fixtures. `assess(None)` is a no-op by construction,
+        # so an offline build scores exactly as it did before calima existed.
         spots = [s for s in spots if s.id in atmosphere or s.id in marine]
         attributions = [OpenMeteoAtmosphere.attribution, OpenMeteoMarine.attribution]
     else:
@@ -409,8 +613,20 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
 
         # Atmosphere for every spot: viewpoints need the vertical profile,
         # beaches need surface wind.
-        atmosphere = atmosphere_source.fetch(spots, FORECAST_HOURS)
+        atmosphere = atmosphere_source.fetch(
+            spots, FORECAST_HOURS, past_days=GRID_PAST_DAYS
+        )
         marine = marine_source.fetch(by_type(spots, "beach"), FORECAST_HOURS)
+        air_source = OpenMeteoAir()
+        try:
+            air = air_source.fetch(
+                spots, past_days=GRID_PAST_DAYS, forecast_days=FORECAST_DAYS
+            )
+        except Exception as error:
+            # Dust sharpens a forecast, it is not the forecast. Losing it costs
+            # the calima warning and the haze term; every other number stands.
+            print(f"air quality unavailable: {error}", file=sys.stderr)
+            air = {}
         try:
             status = official_source.fetch()
         except Exception as error:
@@ -451,18 +667,22 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
         ]
         if observed is not None:
             attributions.append(satellite_source.attribution)
+        if air:
+            attributions.append(air_source.attribution)
         # Only credited when its data is actually in the document.
         if status is not None:
             attributions.append(official_source.attribution)
 
+    hours = pack_hours(spots, atmosphere, air)
     document = assemble(
-        spots, atmosphere, marine, status, attributions, grid, observed
+        spots, atmosphere, marine, status, attributions, grid, observed, hours, air
     )
     validate(
         document,
         spots,
         len(grid.values) if grid else None,
         len(observed.values) if observed else None,
+        len(hours.values) if hours else None,
     )
 
     if dry_run or out is None:
@@ -484,6 +704,12 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
         observed_staging = observed_blob.with_suffix(observed_blob.suffix + ".tmp")
         observed_staging.write_bytes(observed.values)
         observed_staging.replace(observed_blob)
+
+    if hours is not None:
+        hours_blob = out.parent / document["spot_hours"]["file"]
+        hours_staging = hours_blob.with_suffix(hours_blob.suffix + ".tmp")
+        hours_staging.write_bytes(hours.values)
+        hours_staging.replace(hours_blob)
 
     staging = out.with_suffix(out.suffix + ".tmp")
     staging.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
@@ -520,6 +746,18 @@ def summarise(document: dict) -> str:
             len(observed_meta["times"]),
             observed_meta["times"][0],
             observed_meta["times"][-1],
+        )
+    )
+    hours_meta = document.get("spot_hours")
+    lines.append(
+        "spot hours: none"
+        if hours_meta is None
+        else "spot hours: {} spots x {} series x {} hours, {} KiB from {}".format(
+            len(hours_meta["spots"]),
+            len(hours_meta["series"]),
+            hours_meta["count"],
+            hours_meta["bytes"] // 1024,
+            hours_meta["t0"],
         )
     )
     lines.append("")

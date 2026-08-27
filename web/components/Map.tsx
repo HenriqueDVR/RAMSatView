@@ -19,6 +19,7 @@ import {
 import type { Locale } from "@/lib/i18n";
 import { translator } from "@/lib/i18n";
 import SpotCallout from "@/components/SpotCallout";
+import { spotHourAt, type SpotHours } from "@/lib/spotHours";
 import { withBase } from "@/lib/basePath";
 import { CloudDeckLayer, fieldFrame } from "@/lib/map/CloudDeckLayer";
 import { envelopeProfile, hourSlice, type CloudGrid } from "@/lib/cloudGrid";
@@ -203,6 +204,8 @@ export default function MapView({
   observed = null,
   timeIndex = 0,
   time,
+  hours = null,
+  atMs,
 }: {
   spots: SpotEntry[];
   locale: Locale;
@@ -223,6 +226,9 @@ export default function MapView({
   observed?: ObservedCloud | null;
   /** Which hour of the volume is being shown. Ignored without a grid. */
   timeIndex?: number;
+  /** The per-spot hourly series and the instant on it, for the callout. */
+  hours?: SpotHours | null;
+  atMs?: number;
   /**
    * The instant the scene is lit for. Defaults to the sunrise the forecast is
    * about, because that is the moment the whole product describes - not
@@ -641,6 +647,11 @@ export default function MapView({
             spot={selectedSpot}
             locale={locale}
             t={translator(locale)}
+            hour={
+              hours && atMs !== undefined
+                ? spotHourAt(hours, selectedSpot.id, atMs)
+                : null
+            }
           />,
           calloutHost,
         )}

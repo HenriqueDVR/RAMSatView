@@ -3,7 +3,9 @@
 import ScoreDial from "@/components/ScoreDial";
 import VerticalProfile from "@/components/VerticalProfile";
 import {
+  calimaSeverity,
   deckVerdict,
+  hourVerdict,
   isViewpointDay,
   worstWarning,
   type SpotEntry,
@@ -15,6 +17,7 @@ import {
   type Translate,
   type TranslationKey,
 } from "@/lib/i18n";
+import type { SpotHour } from "@/lib/spotHours";
 
 /**
  * Everything known about one spot.
@@ -38,10 +41,18 @@ export default function SpotDetail({
   spot,
   locale,
   t,
+  hour = null,
 }: {
   spot: SpotEntry;
   locale: Locale;
   t: Translate;
+  /**
+   * What this spot's own instruments read at the hour the scrubber is on, when
+   * the series was published and covers it. Null falls the panel back to the
+   * day summary - which is where it always was, and is still the right answer
+   * for a spot or an hour the blob does not carry.
+   */
+  hour?: SpotHour | null;
 }) {
   const day = spot.days[0];
   if (!day) return null;
@@ -67,10 +78,33 @@ export default function SpotDetail({
       {isViewpointDay(day) ? (
         <>
           {(() => {
-            const verdict = deckVerdict(day, spot.elevation_m);
+            // The hour's verdict when there is one. This is the whole point of
+            // the series: scrub to 04:00 and the sentence has to change with
+            // the deck the map is drawing, not stay on the day's summary while
+            // the picture moves underneath it.
+            const verdict =
+              (hour &&
+                hourVerdict(hour, spot.elevation_m, spot.fog_is_the_view)) ??
+              deckVerdict(day, spot.elevation_m, spot.fog_is_the_view);
             return (
               <p className={`verdict verdict-${verdict}`}>
                 {t(`verdict.${verdict}` as TranslationKey)}
+              </p>
+            );
+          })()}
+
+          {(() => {
+            // Dust is invisible to everything else on this panel: the profile
+            // below is condensed water, and on a calima morning it is drawn
+            // perfectly clear while the view is an orange wall. If the air is
+            // hazed, that has to be said in words next to the verdict.
+            const severity = hour
+              ? calimaSeverity(hour.aod)
+              : (day.calima?.severity ?? "none");
+            if (severity === "none") return null;
+            return (
+              <p className={`calima calima-${severity}`}>
+                {t(`calima.${severity}` as TranslationKey)}
               </p>
             );
           })()}
@@ -84,10 +118,10 @@ export default function SpotDetail({
             <VerticalProfile
               profile={day.profile}
               summitM={spot.elevation_m}
-              deckTopM={day.deck_top_m}
+              deckTopM={hour?.deckTopM ?? day.deck_top_m}
               summitLabel={t("label.summit")}
               caption={t("profile.caption", {
-                deck: day.deck_top_m?.toFixed(0) ?? 0,
+                deck: (hour?.deckTopM ?? day.deck_top_m)?.toFixed(0) ?? 0,
                 summit: spot.elevation_m.toFixed(0),
               })}
               readout={(pct) => t("profile.at_summit", { pct })}
@@ -105,11 +139,11 @@ export default function SpotDetail({
             />
             <Fact
               label={t("label.temperature")}
-              value={`${day.temperature_c.toFixed(0)} °C`}
+              value={`${(hour?.temperatureC ?? day.temperature_c).toFixed(0)} °C`}
             />
             <Fact
               label={t("label.wind")}
-              value={`${day.wind_kmh.toFixed(0)} km/h`}
+              value={`${(hour?.windKmh ?? day.wind_kmh).toFixed(0)} km/h`}
             />
           </dl>
 
@@ -117,7 +151,7 @@ export default function SpotDetail({
             {[...day.cloud_sea.reasons, ...day.visibility.reasons].map(
               (reason) => (
                 <li key={reason}>{reason}</li>
-              )
+              ),
             )}
           </ul>
         </>
@@ -141,10 +175,13 @@ export default function SpotDetail({
                 value={`${day.wave_height_m.toFixed(1)} m`}
               />
             )}
-            {day.wind_kmh !== null && (
+            {/* Wind is the one beach number the hourly series carries - the
+                sea state comes from the marine forecast, which is a different
+                source on a different clock. */}
+            {(hour?.windKmh ?? day.wind_kmh) !== null && (
               <Fact
                 label={t("label.wind")}
-                value={`${day.wind_kmh.toFixed(0)} km/h`}
+                value={`${(hour?.windKmh ?? day.wind_kmh)!.toFixed(0)} km/h`}
               />
             )}
             {day.uv_index !== null && (

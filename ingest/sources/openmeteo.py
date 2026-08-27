@@ -16,6 +16,8 @@ from ingest.sources.base import (
     AtmosphereHour,
     LevelSample,
 )
+from dataclasses import replace
+
 from ingest.sources.http import get_json, make_session
 from ingest.spots import Spot
 
@@ -114,21 +116,60 @@ class OpenMeteoAtmosphere:
     def __init__(self, session=None):
         self._session = session or make_session()
 
-    def build_params(self, spots: Sequence[Spot], hours: int) -> dict:
+    def build_params(
+        self, spots: Sequence[Spot], hours: int, past_days: int = 0
+    ) -> dict:
         return {
             "latitude": ",".join(f"{s.lat:.4f}" for s in spots),
             "longitude": ",".join(f"{s.lon:.4f}" for s in spots),
             "hourly": ",".join(_hourly_vars()),
             "daily": "sunrise,sunset",
             "forecast_days": max(1, min(7, -(-hours // 24))),
+            "past_days": past_days,
             "timeformat": "unixtime",
             "timezone": "UTC",
             "cell_selection": "nearest",
         }
 
-    def fetch(self, spots: Sequence[Spot], hours: int = 72) -> dict[str, AtmosphereForecast]:
-        payload = get_json(self._session, ENDPOINT, self.build_params(spots, hours))
-        return self.parse(spots, payload)
+    def fetch(
+        self, spots: Sequence[Spot], hours: int = 72, past_days: int = 0
+    ) -> dict[str, AtmosphereForecast]:
+        """Reaching backwards costs nothing.
+
+        Open-Meteo charge one call per location while a request stays under
+        about fourteen variables and fourteen days, and this one is already
+        over on variables and nowhere near on days - so seven days of history
+        weigh exactly what three days of forecast did. It is asked for because
+        the scrubber can be dragged into the past, and a spot with no history
+        leaves its own readouts frozen on a day summary while the map behind
+        them moves.
+        """
+        payload = get_json(
+            self._session, ENDPOINT, self.build_params(spots, hours, past_days)
+        )
+        parsed = self.parse(spots, payload)
+        if not past_days:
+            return parsed
+
+        # The hours keep their history - that is what it was fetched for - but
+        # the daily axis does not. Open-Meteo returns one sunrise per requested
+        # day, past days included, and `score_sunrise` indexes that array to
+        # decide which mornings to publish. Left alone it scored last Thursday
+        # and shipped it as the forecast, with the beaches on the right days
+        # beside it because they come from a source with no history.
+        #
+        # Dropped here rather than filtered by date downstream, because only
+        # this call knows how much history it asked for. Everything further in
+        # would have to infer it from a clock, and the committed fixtures are
+        # entirely in the past by the time they are replayed.
+        return {
+            spot_id: replace(
+                forecast,
+                sunrise=forecast.sunrise[past_days:],
+                sunset=forecast.sunset[past_days:],
+            )
+            for spot_id, forecast in parsed.items()
+        }
 
     @staticmethod
     def parse(spots: Sequence[Spot], payload) -> dict[str, AtmosphereForecast]:

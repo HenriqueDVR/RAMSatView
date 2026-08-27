@@ -46,6 +46,7 @@ spots:
     lat: 32.8033
     lon: -17.1450
     elevation_m: 1150
+    fog_is_the_view: true
     notes: Inverse case - fog is the attraction here, not a spoiler. Scored separately.
 
   - id: cabo-girao
