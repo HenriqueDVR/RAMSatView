@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   type ErrorEvent as MapErrorEvent,
   Map as MapLibreMap,
@@ -16,17 +17,12 @@ import {
   type SpotEntry,
 } from "@/lib/conditions";
 import type { Locale } from "@/lib/i18n";
+import { translator } from "@/lib/i18n";
+import SpotCallout from "@/components/SpotCallout";
 import { withBase } from "@/lib/basePath";
 import { CloudDeckLayer, fieldFrame } from "@/lib/map/CloudDeckLayer";
-import {
-  envelopeProfile,
-  hourSlice,
-  type CloudGrid,
-} from "@/lib/cloudGrid";
-import {
-  nearestHourIndex,
-  type ObservedCloud,
-} from "@/lib/observedCloud";
+import { envelopeProfile, hourSlice, type CloudGrid } from "@/lib/cloudGrid";
+import { nearestHourIndex, type ObservedCloud } from "@/lib/observedCloud";
 import { ObservedLayer } from "@/lib/map/ObservedLayer";
 import { CloudTopLayer } from "@/lib/map/CloudTopLayer";
 import { SkyLayer } from "@/lib/map/SkyLayer";
@@ -122,8 +118,14 @@ function sliceBudget(): number {
  * reserving the top pushes the horizon down into the visible part of the
  * frame instead of leaving it behind the masthead.
  */
-function hudPadding(): { top: number; bottom: number; left: number; right: number } {
-  if (typeof window === "undefined") return { top: 0, bottom: 0, left: 0, right: 0 };
+function hudPadding(): {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+} {
+  if (typeof window === "undefined")
+    return { top: 0, bottom: 0, left: 0, right: 0 };
   const wide = window.innerWidth >= 1024;
   return {
     top: wide ? 150 : 0,
@@ -180,7 +182,7 @@ function defaultTime(spots: SpotEntry[]): Date {
 /** The profile the deck is drawn from: the selected viewpoint, else the highest. */
 function activeProfile(
   spots: SpotEntry[],
-  selectedId: string | null
+  selectedId: string | null,
 ): ProfilePoint[] {
   const viewpoints = spots.filter((spot) => spot.type === "viewpoint");
   const selected = viewpoints.find((spot) => spot.id === selectedId);
@@ -247,9 +249,14 @@ export default function MapView({
     select.current = onSelect;
   }, [onSelect]);
 
+  // The element the selected spot's callout is portalled into. State rather
+  // than a ref: React has to re-render to fill it once the marker exists.
+  const [calloutHost, setCalloutHost] = useState<HTMLDivElement | null>(null);
+  const selectedSpot = spots.find((spot) => spot.id === selectedId) ?? null;
+
   const profile = useMemo(
     () => activeProfile(spots, selectedId),
-    [spots, selectedId]
+    [spots, selectedId],
   );
 
   // One sun for the whole scene: the sky gradient, both hillshades, the
@@ -297,7 +304,10 @@ export default function MapView({
     // The end-to-end suite needs a handle on an imperative object React never
     // exposes. Read-only, and cheaper than instrumenting the component.
     (window as unknown as { __satappMap?: MapLibreMap }).__satappMap = instance;
-    instance.addControl(new NavigationControl({ visualizePitch: true }), "top-right");
+    instance.addControl(
+      new NavigationControl({ visualizePitch: true }),
+      "top-right",
+    );
 
     const layer = new CloudDeckLayer({
       bounds: BOUNDS,
@@ -333,7 +343,8 @@ export default function MapView({
     // MapLibre tags source failures with sourceId, but does not put it on the
     // ErrorEvent type, so it is read off the event rather than declared.
     const onError = (event: MapErrorEvent) => {
-      const sourceId = (event as MapErrorEvent & { sourceId?: string }).sourceId;
+      const sourceId = (event as MapErrorEvent & { sourceId?: string })
+        .sourceId;
       if (sourceId !== DEM_SOURCE_ID || !instance.getTerrain()) return;
       demFailed.current = true;
       instance.setTerrain(null);
@@ -375,7 +386,7 @@ export default function MapView({
     }
     const { bbox, altitudes_m, cols, rows } = grid.header;
     layer.setField(
-      fieldFrame(bbox, altitudes_m, cols, rows, hourSlice(grid, timeIndex))
+      fieldFrame(bbox, altitudes_m, cols, rows, hourSlice(grid, timeIndex)),
     );
     layer.setProfile(envelopeProfile(grid, timeIndex));
   }, [profile, grid, timeIndex]);
@@ -406,7 +417,10 @@ export default function MapView({
     return whenStyleReady(instance, () => {
       const layer = observedLayer.current;
       if (!layer) return;
-      layer.setFrame(observedIndex === null ? null : observed, observedIndex ?? 0);
+      layer.setFrame(
+        observedIndex === null ? null : observed,
+        observedIndex ?? 0,
+      );
     });
     // Visibility is left to the layer-switch effect below, which runs after
     // this one on the same commit and reads the same observedIndex.
@@ -437,14 +451,14 @@ export default function MapView({
         instance.setLayoutProperty(
           SATELLITE_LAYER_ID,
           "visibility",
-          layers.satellite ? "visible" : "none"
+          layers.satellite ? "visible" : "none",
         );
       }
       if (!demFailed.current) {
         instance.setTerrain(
           layers.terrain
             ? { source: DEM_SOURCE_ID, exaggeration: TERRAIN_EXAGGERATION }
-            : null
+            : null,
         );
       }
       deck.current?.setVisible(layers.cloud);
@@ -455,7 +469,9 @@ export default function MapView({
       // Only ever visible when there is an hour to show: outside the observed
       // window there is nothing measured, and the switch must not resurrect
       // the last frame that was.
-      observedLayer.current?.setVisible(layers.observed && observedIndex !== null);
+      observedLayer.current?.setVisible(
+        layers.observed && observedIndex !== null,
+      );
     };
 
     return whenStyleReady(instance, apply);
@@ -482,31 +498,54 @@ export default function MapView({
 
     for (const spot of spots) {
       const score = headlineScore(spot);
+
+      // Two elements, not one, and the reason is not decoration.
+      //
+      // MapLibre positions a marker by writing `transform` on its element on
+      // every frame. The pin also wants a `transform` of its own - the scale
+      // it grows by on hover and on selection - and the two cannot share the
+      // property. They did: the inline transform MapLibre writes beat the
+      // stylesheet, so the hover and selected scales never applied at all,
+      // and the `transition: transform` meant to animate them instead
+      // animated the *positioning*, leaving every pin gliding along behind
+      // the terrain it is pinned to for the length of every pan and fly.
+      //
+      // The wrapper is MapLibre's to move. The button inside is ours to
+      // style.
+      const anchor = document.createElement("div");
+      anchor.className = "map-pin-anchor";
       const element = document.createElement("button");
       element.type = "button";
       element.className = "map-pin";
+      anchor.appendChild(element);
       // The pin body stays dark whatever the score - it is read against a dawn
       // sky and a cloud deck, and a saturated fill loses its own numerals at
       // 32px. The score colour drives the ring and the glow instead.
-      element.style.setProperty("--pin", markerColor(score ? score.value : null));
+      element.style.setProperty(
+        "--pin",
+        markerColor(score ? score.value : null),
+      );
       element.textContent = score ? String(Math.round(score.value)) : "?";
       element.addEventListener("click", (event) => {
         event.stopPropagation();
         select.current(spot.id);
       });
 
-      const marker = new Marker({ element })
+      const marker = new Marker({ element: anchor })
         .setLngLat([spot.lon, spot.lat])
         .addTo(instance);
 
       // Set the label after addTo: the Marker constructor stamps its own
-      // generic "Map marker" aria-label onto the element, which would
-      // otherwise replace the spot name and score for screen readers.
+      // generic "Map marker" aria-label onto the element it was given, which
+      // is now the wrapper. Left there it would announce a second, nameless
+      // marker beside every pin, so it comes off the wrapper and the real
+      // label goes on the button a reader can actually press.
+      anchor.removeAttribute("aria-label");
       element.setAttribute(
         "aria-label",
         `${locale === "pt" ? spot.name.pt : spot.name.en}: ${
           score ? Math.round(score.value) : "no data"
-        }`
+        }`,
       );
 
       markers.current.set(spot.id, marker);
@@ -515,8 +554,44 @@ export default function MapView({
 
   useEffect(() => {
     for (const [id, marker] of markers.current) {
-      marker.getElement().classList.toggle("selected", id === selectedId);
+      // The wrapper is the marker's element now; the pin is inside it.
+      marker
+        .getElement()
+        .querySelector(".map-pin")
+        ?.classList.toggle("selected", id === selectedId);
     }
+  }, [selectedId, spots]);
+
+  // The callout is a Marker of its own rather than an absolutely positioned
+  // box over the map, and that is the whole reason it stays glued to the pin:
+  // with terrain on, a spot's screen position is its longitude, its latitude
+  // *and* the elevation of the DEM under it, and MapLibre is the only thing
+  // that knows all three. Projecting the coordinate by hand drifts away from
+  // the pin the moment the camera pitches.
+  useEffect(() => {
+    const instance = map.current;
+    const spot = spots.find((candidate) => candidate.id === selectedId);
+    if (!instance || !spot) {
+      setCalloutHost(null);
+      return;
+    }
+
+    const host = document.createElement("div");
+    const marker = new Marker({
+      element: host,
+      // Above the pin, clear of it. The pin is 32px and anchored at its own
+      // centre, so half of it plus a gap is what the callout has to clear.
+      anchor: "bottom",
+      offset: [0, -24],
+    })
+      .setLngLat([spot.lon, spot.lat])
+      .addTo(instance);
+
+    setCalloutHost(host);
+    return () => {
+      marker.remove();
+      setCalloutHost(null);
+    };
   }, [selectedId, spots]);
 
   useEffect(() => {
@@ -557,5 +632,18 @@ export default function MapView({
     });
   }, [selectedId, spots]);
 
-  return <div ref={container} className="map" aria-label="Map of spots" />;
+  return (
+    <div ref={container} className="map" aria-label="Map of spots">
+      {calloutHost &&
+        selectedSpot &&
+        createPortal(
+          <SpotCallout
+            spot={selectedSpot}
+            locale={locale}
+            t={translator(locale)}
+          />,
+          calloutHost,
+        )}
+    </div>
+  );
 }

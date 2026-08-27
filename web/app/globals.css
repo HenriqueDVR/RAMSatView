@@ -274,6 +274,14 @@ body {
   place-items: center;
 }
 
+/* MapLibre's to move, and nothing else's. It carries no transition, so the pin
+   sits exactly where the map says on every frame instead of easing towards it.
+   Sized by its child; `line-height: 0` keeps the wrapper from adding a strip of
+   text box under the button and pushing the pin off its own coordinate. */
+.map-pin-anchor {
+  line-height: 0;
+}
+
 .map-pin {
   width: 34px;
   height: 34px;
@@ -308,6 +316,101 @@ body {
   box-shadow:
     0 2px 6px rgb(0 0 0 / 0.6),
     0 0 20px -2px var(--pin, transparent);
+}
+
+/* --- the callout on the selected pin --- */
+
+/*
+ * Anchored above the pin by a MapLibre Marker, so it carries the same terrain
+ * elevation the pin does and the two never drift apart under a pitched camera.
+ *
+ * Pointer-transparent on purpose. It sits directly over the pin it describes
+ * and over whatever terrain is behind it, and a box that swallowed clicks
+ * would make the very spot it is labelling harder to select than the seven it
+ * is not.
+ */
+.callout {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  /* Wide enough for a verdict, narrow enough not to cover the neighbouring
+     island. The verdicts are three or four words. */
+  max-width: 15rem;
+  padding: var(--s-2) var(--s-3);
+  pointer-events: none;
+  background: var(--hud-bg);
+  backdrop-filter: var(--hud-blur);
+  -webkit-backdrop-filter: var(--hud-blur);
+  border: 1px solid var(--hud-line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--e-2);
+  animation: callout-in var(--dur-1) var(--ease);
+}
+
+@keyframes callout-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .callout {
+    animation: none;
+  }
+}
+
+/* The tail, so the box reads as belonging to the pin under it rather than
+   floating near it. A rotated square rather than a border triangle, because a
+   triangle cannot carry the panel's own hairline. */
+.callout::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--hud-bg);
+  border-right: 1px solid var(--hud-line);
+  border-bottom: 1px solid var(--hud-line);
+}
+
+/* The sidebar's ring, one size down. The score classes colour it, the same
+   ones the list rows use, so the number means the same thing in both places. */
+.callout-score {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  font: 650 var(--t-sm) / 1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.callout-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.callout-name {
+  font-weight: 650;
+  font-size: var(--t-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.callout-sub {
+  font-size: var(--t-xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The attribution control wraps to four lines at 375px and eats the map. */
@@ -1488,5 +1591,12 @@ body {
 
   .attribution {
     margin: 0;
+  }
+
+  /* The sheet already says the spot's name, its score and its verdict the
+     moment a pin is tapped, and it says them somewhere that cannot end up
+     underneath itself. A callout here would be the same three facts twice. */
+  .callout {
+    display: none;
   }
 }
