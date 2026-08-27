@@ -22,7 +22,16 @@ concurrency:
 jobs:
   web:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # One runner per browser project rather than one runner running both.
+    # playwright.config.ts pins workers to 1 on purpose - two SwiftShader maps
+    # sharing a CPU turns slow tile loading into a flake - so the only way to
+    # cut the wall clock is to give each project its own machine. Together they
+    # ran past half an hour and the job was cancelled mid-suite.
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop, mobile]
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: web
@@ -38,6 +47,9 @@ jobs:
       - run: npm ci
 
       - name: Lint
+        # Both matrix jobs run these. It is a few seconds against the cost of a
+        # third job that would have to install the same dependencies to save
+        # them.
         run: npm run lint
 
       - name: Typecheck
@@ -55,12 +67,14 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Test
-        run: npx playwright test
+        run: npx playwright test --project=${{ matrix.project }}
 
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-results
+          # Named per project: two jobs uploading the same artifact name is an
+          # error, and the failure it reports is the upload's, not the test's.
+          name: playwright-results-${{ matrix.project }}
           path: web/test-results
           retention-days: 7
 
