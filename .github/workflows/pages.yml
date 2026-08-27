@@ -67,6 +67,13 @@ jobs:
         run: npm ci
         working-directory: web
 
+      - name: Lint and typecheck
+        # Seconds, and fail-closed like everything else here: a publish that
+        # ships a type error is worse than a late publish. The browser suite is
+        # not run here - see ci.yml for why.
+        run: npm run lint && npm run typecheck
+        working-directory: web
+
       - name: Build the site
         # A project site is served from /<repo>/, and every absolute URL in the
         # bundle has to carry that prefix or the page loads to a blank screen.

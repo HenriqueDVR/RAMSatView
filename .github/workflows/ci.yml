@@ -1,0 +1,81 @@
+name: ci
+
+# The web gates. Deliberately not part of pages.yml: the browser suite takes a
+# quarter of an hour, and pages.yml runs hourly on a cron to publish fresh
+# data. Hanging a fifteen-minute Chromium run off every publish would burn
+# most of a runner-day per day and would fail the publish for reasons that
+# have nothing to do with the forecast.
+#
+# What pages.yml does keep is lint and typecheck - those are seconds, and a
+# publish that ships a type error is worse than a late publish.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build the static export
+        # The suite serves out/, so this is not optional: without it Playwright
+        # would test whatever export happened to be lying around, which on a
+        # fresh checkout is nothing at all. No ingest step - every test routes
+        # conditions.json to tests/fixture.ts, and running the real ingest here
+        # would make an upstream outage look like a failing test.
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test
+        run: npx playwright test
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-results
+          path: web/test-results
+          retention-days: 7
+
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run the ingest tests
+        run: python -m pytest -q

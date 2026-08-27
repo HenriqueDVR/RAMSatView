@@ -42,7 +42,10 @@ export default defineConfig({
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
-    command: "npx serve out -l 3100",
+    // --yes, because a bare `npx serve` on a machine that has never
+    // installed it stops at an interactive prompt and the whole suite
+    // sits there until the webServer timeout.
+    command: "npx --yes serve out -l 3100",
     port: 3100,
     reuseExistingServer: true,
     timeout: 60_000,
