@@ -20,10 +20,11 @@ module, not a new project.
 ```
 GitHub Actions (hourly)
    |-- Open-Meteo forecast + marine   (gridded, per-spot)
+   |-- NOAA GMGSI infrared mosaic     (observed cloud tops)
    |-- IPMA warnings / UV             (official, island-wide)
-   |-- score  inversion.py, beach.py
+   |-- score  inversion.py, beach.py, cloudtop.py
    |-- validate  (fail closed)
-   `-- conditions.json  ->  Cloudflare R2  ->  static Next.js on Pages
+   `-- conditions.json + .bin  ->  Cloudflare R2  ->  static Next.js on Pages
 ```
 
 The browser never calls a weather API. Everything is precomputed into a ~20KB
@@ -80,12 +81,27 @@ reason someone would use this over a normal forecast.
 |---|---|---|
 | Open-Meteo Forecast | Vertical profiles, cloud, wind | CC BY 4.0, **free tier is non-commercial** |
 | Open-Meteo Marine | SST, waves, swell | CC BY 4.0, same restriction |
+| NOAA GMGSI | Observed cloud-top altitude | Public domain, no account needed |
 | IPMA | Official warnings, UV | Open data, attribution required |
 
 `ingest/sources/base.py` defines the provider protocols. Everything downstream
 depends only on the normalised types there, so swapping Open-Meteo for a
 self-hosted instance or raw ECMWF open data — which is what commercial use would
 require — means writing one new module and changing nothing else.
+
+**GMGSI stores brightness as 0-255 counts**, not the kelvin its `units`
+attribute claims, and NOAA publish no conversion beside the file. The NESDIS
+infrared enumeration in `ingest/sources/gmgsi.py` is pinned against the sea
+surface temperature already ingested: over clear water the two must agree to
+within the few kelvin the humid atmosphere accounts for. Cloud-top altitude
+then comes from reading that temperature against the vertical profile in
+`ingest/scoring/cloudtop.py` — so the map's one measured layer costs no extra
+forecast call.
+
+**Observation only ever reaches backwards.** The satellite field covers the
+last day at three-hour spacing; scrubbing past it removes the layer rather than
+holding the last scan on screen, and the scrubber marks the span that is
+actually covered.
 
 **IPMA has only two Madeira point locations** (Funchal `2310300`, Porto Santo
 `2320100`), far too coarse for per-spot scoring. It is used for the authoritative

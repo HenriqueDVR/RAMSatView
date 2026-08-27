@@ -34,6 +34,9 @@ export function fixtureConditions(now = Date.now()): Conditions {
     // a quarter-megabyte of bytes to review for a picture the deck already
     // draws. The volume is exercised in cloudGrid.spec.ts instead.
     cloud_grid: null,
+    // Same reasoning: the observed field is bytes, and observedCloud.spec.ts
+    // is where its decoding and its colour ramp are pinned.
+    cloud_observed: null,
     official: {
       source: "IPMA",
       issued_at: new Date(now - 40 * 60_000).toISOString(),

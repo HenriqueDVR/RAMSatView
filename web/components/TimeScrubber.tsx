@@ -28,6 +28,7 @@ export default function TimeScrubber({
   locale,
   t,
   sunriseIndex,
+  observedRange,
   now = new Date(),
 }: {
   /** Every hour in the volume, in order. */
@@ -38,6 +39,12 @@ export default function TimeScrubber({
   t: Translate;
   /** The morning the forecast is about, marked on the track. */
   sunriseIndex?: number;
+  /**
+   * First and last hour the satellite covers, as indices into `times`. Drawn
+   * as a band so it is obvious why the observed layer stops - it ran out of
+   * observation, rather than breaking.
+   */
+  observedRange?: { from: number; to: number };
   now?: Date;
 }) {
   const sliderId = useId();
@@ -73,6 +80,16 @@ export default function TimeScrubber({
           is not interrupted by a label.
         */}
         <div className="scrubber-marks" aria-hidden="true">
+          {observedRange && observedRange.to >= observedRange.from && (
+            <span
+              className="scrubber-observed"
+              style={{
+                left: `${percent(observedRange.from)}%`,
+                width: `${percent(observedRange.to) - percent(observedRange.from)}%`,
+              }}
+              title={t("time.observed")}
+            />
+          )}
           {marks.map((mark) => (
             <span
               key={mark.index}

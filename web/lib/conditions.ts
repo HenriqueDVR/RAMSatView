@@ -7,6 +7,7 @@
  */
 
 import type { CloudGridHeader } from "@/lib/cloudGrid";
+import type { ObservedCloudHeader } from "@/lib/observedCloud";
 import { withBase } from "@/lib/basePath";
 
 export const SCHEMA_VERSION = 2;
@@ -89,6 +90,13 @@ export type Conditions = {
    * profiles instead - the behaviour it had before the volume existed.
    */
   cloud_grid: CloudGridHeader | null;
+  /**
+   * Describes cloud-observed.bin, the satellite cloud-top field. Null when the
+   * mosaic could not be read, in which case the map simply has nothing
+   * observed to show - there is no forecast substitute for a measurement, and
+   * pretending otherwise is the one thing this layer must never do.
+   */
+  cloud_observed: ObservedCloudHeader | null;
   spots: SpotEntry[];
 };
 

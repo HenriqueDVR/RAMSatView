@@ -13,6 +13,7 @@ Two layers of testing here:
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -315,8 +316,14 @@ def test_golden_low_viewpoints_are_never_above_the_deck(real_forecasts):
 
 def test_golden_confidence_decays_with_lead_time(real_forecasts):
     spots, forecasts = real_forecasts
-    near = score_sunrise(spots["pico-arieiro"], forecasts["pico-arieiro"], 0)
-    far = score_sunrise(spots["pico-arieiro"], forecasts["pico-arieiro"], 2)
+    # Pin the issue time to the start of the fixture's own data. The parser
+    # stamps issued_at with the wall clock, which is right for a live fetch and
+    # a time bomb for a committed fixture: once today overtakes the last day in
+    # the file, every lead time collapses to zero and the decay is invisible.
+    forecast = forecasts["pico-arieiro"]
+    forecast = replace(forecast, issued_at=forecast.hours[0].time)
+    near = score_sunrise(spots["pico-arieiro"], forecast, 0)
+    far = score_sunrise(spots["pico-arieiro"], forecast, 2)
     assert far.visibility.confidence < near.visibility.confidence
 
 

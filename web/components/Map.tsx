@@ -23,6 +23,11 @@ import {
   hourSlice,
   type CloudGrid,
 } from "@/lib/cloudGrid";
+import {
+  nearestHourIndex,
+  type ObservedCloud,
+} from "@/lib/observedCloud";
+import { ObservedLayer } from "@/lib/map/ObservedLayer";
 import { SEA_LAYER_ID, SeaLayer } from "@/lib/map/SeaLayer";
 import { SkyLayer } from "@/lib/map/SkyLayer";
 import { registerCleanDemProtocol } from "@/lib/map/demProtocol";
@@ -187,6 +192,7 @@ export default function MapView({
   onSelect,
   layers = DEFAULT_LAYERS,
   grid = null,
+  observed = null,
   timeIndex = 0,
   time,
 }: {
@@ -201,6 +207,12 @@ export default function MapView({
    * gridded ingest existed.
    */
   grid?: CloudGrid | null;
+  /**
+   * The satellite cloud-top field, when one was published. It only covers the
+   * hours already past, so scrubbing into the forecast leaves it empty rather
+   * than holding the last scan on screen.
+   */
+  observed?: ObservedCloud | null;
   /** Which hour of the volume is being shown. Ignored without a grid. */
   timeIndex?: number;
   /**
@@ -214,6 +226,7 @@ export default function MapView({
   const map = useRef<MapLibreMap | null>(null);
   const deck = useRef<CloudDeckLayer | null>(null);
   const sea = useRef<SeaLayer | null>(null);
+  const observedLayer = useRef<ObservedLayer | null>(null);
   const sky = useRef<SkyLayer | null>(null);
   // Once the DEM has failed there is nothing for the terrain switch to turn
   // back on, and asking for it again would put the broken globe back.
@@ -297,6 +310,9 @@ export default function MapView({
       sea.current = water;
       instance.addLayer(water);
       instance.addLayer(layer);
+      // Under the sea plane and the deck, over the basemap: a flat picture of
+      // the sky belongs behind the two bodies that have real geometry.
+      observedLayer.current = new ObservedLayer(instance, SEA_LAYER_ID);
       layer.setProfile(activeProfile(spots, selectedId));
     });
 
@@ -331,6 +347,7 @@ export default function MapView({
       deck.current = null;
       sea.current = null;
       sky.current = null;
+      observedLayer.current = null;
       pins.clear();
     };
     // Mount only. The deck and markers are kept current by the effects below.
@@ -355,6 +372,28 @@ export default function MapView({
     );
     layer.setProfile(envelopeProfile(grid, timeIndex));
   }, [profile, grid, timeIndex]);
+
+  // The observed field is matched to the scene's instant rather than to the
+  // volume's hour index: the two axes are published by different sources over
+  // different spans, and lining them up by position rather than by clock is
+  // how last night's satellite ends up captioned as tomorrow morning.
+  const observedIndex = useMemo(() => {
+    if (!observed) return null;
+    const instant = (time ?? defaultTime(spots)).getTime();
+    return nearestHourIndex(observed, instant);
+  }, [observed, time, spots]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance) return;
+    return whenStyleReady(instance, () => {
+      const layer = observedLayer.current;
+      if (!layer) return;
+      layer.setFrame(observedIndex === null ? null : observed, observedIndex ?? 0);
+    });
+    // Visibility is left to the layer-switch effect below, which runs after
+    // this one on the same commit and reads the same observedIndex.
+  }, [observed, observedIndex]);
 
   useEffect(() => {
     const instance = map.current;
@@ -392,6 +431,10 @@ export default function MapView({
         );
       }
       deck.current?.setVisible(layers.cloud);
+      // Only ever visible when there is an hour to show: outside the observed
+      // window there is nothing measured, and the switch must not resurrect
+      // the last frame that was.
+      observedLayer.current?.setVisible(layers.observed && observedIndex !== null);
       // The sea plane is drawn at -2m and writes depth. With the terrain off,
       // every raster is flat at zero and the plane wins the depth test over
       // the whole map - an empty blue rectangle. So it follows the terrain
@@ -400,7 +443,7 @@ export default function MapView({
     };
 
     return whenStyleReady(instance, apply);
-  }, [layers]);
+  }, [layers, observedIndex]);
 
   useEffect(() => {
     const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");

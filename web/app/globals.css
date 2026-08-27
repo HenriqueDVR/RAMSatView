@@ -815,6 +815,20 @@ body {
   width: 2px;
 }
 
+/* The stretch the satellite actually covers. A band rather than a tick,
+   because it answers a different question from the marks around it: not "when
+   is this" but "is there anything measured here at all". Outside it the
+   observed layer is simply absent, and without this the map would appear to
+   have lost a layer rather than to have run out of observation. */
+.scrubber-observed {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgb(90 210 235 / 0.16);
+  border-left: 1px solid rgb(90 210 235 / 0.5);
+  border-right: 1px solid rgb(90 210 235 / 0.5);
+}
+
 .scrubber-input {
   width: 100%;
   margin: 0;

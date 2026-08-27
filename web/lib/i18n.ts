@@ -61,10 +61,12 @@ const DICTIONARY = {
     "layers.terrain": "Relevo 3D",
     "layers.sea": "Mar",
     "layers.cloud": "Nuvem",
+    "layers.observed": "Nuvem observada",
     "layers.show": "Mostrar camadas",
     "time.now": "Agora",
     "time.scrub": "Hora mostrada",
     "time.sunrise": "Nascer do sol",
+    "time.observed": "Periodo com imagem de satelite",
   },
   en: {
     "site.title": "Madeira Conditions",
@@ -106,10 +108,12 @@ const DICTIONARY = {
     "layers.terrain": "3D terrain",
     "layers.sea": "Sea",
     "layers.cloud": "Cloud",
+    "layers.observed": "Observed cloud",
     "layers.show": "Show layers",
     "time.now": "Now",
     "time.scrub": "Hour shown",
     "time.sunrise": "Sunrise",
+    "time.observed": "Covered by satellite imagery",
   },
 } as const;
 

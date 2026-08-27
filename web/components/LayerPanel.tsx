@@ -10,6 +10,7 @@ const LABEL: Record<LayerKey, TranslationKey> = {
   terrain: "layers.terrain",
   sea: "layers.sea",
   cloud: "layers.cloud",
+  observed: "layers.observed",
 };
 
 /**

@@ -77,7 +77,11 @@ jobs:
 
       - name: Report output size
         run: |
-          ls -lh web/out/conditions.json web/out/cloud-grid.bin
+          ls -lh web/out/conditions.json
+          # Blobs, not required: the volume and the observed field are each
+          # allowed to be missing from a run, and the size report is not the
+          # place to turn that into a failed publish.
+          ls -lh web/out/*.bin || true
           du -sh web/out
 
       - uses: actions/upload-pages-artifact@v3

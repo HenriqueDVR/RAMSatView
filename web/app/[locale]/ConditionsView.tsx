@@ -19,6 +19,10 @@ import {
   timeIndexFor,
   type CloudGrid,
 } from "@/lib/cloudGrid";
+import {
+  loadObservedCloud,
+  type ObservedCloud,
+} from "@/lib/observedCloud";
 import { nearestIndex } from "@/lib/timeline";
 import { translator, type Locale } from "@/lib/i18n";
 import { DEFAULT_LAYERS, type LayerKey, type LayerState } from "@/lib/layers";
@@ -61,6 +65,7 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layers, setLayers] = useState<LayerState>(DEFAULT_LAYERS);
   const [grid, setGrid] = useState<CloudGrid | null>(null);
+  const [observed, setObserved] = useState<ObservedCloud | null>(null);
   // Null until the volume arrives, then the sunrise the forecast is about -
   // not "now". Held as an index rather than a Date so the slider, the shader
   // and the lighting cannot drift a minute apart from each other.
@@ -109,10 +114,41 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
     };
   }, [conditions]);
 
+  // A couple of kilobytes, so there is nothing to stage: it is fetched
+  // alongside the volume and, like it, costs only its own layer when it fails.
+  useEffect(() => {
+    const header = conditions?.cloud_observed;
+    if (!header) return;
+    let cancelled = false;
+    loadObservedCloud(header, conditionsUrl())
+      .then((loaded) => {
+        if (!cancelled) setObserved(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setObserved(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conditions]);
+
   const times = useMemo(
     () => grid?.timesMs.map((ms) => new Date(ms)) ?? [],
     [grid]
   );
+
+  // Where the satellite's span falls on the forecast's track. The two axes
+  // come from different sources and only overlap over the recent past, so this
+  // is worked out by clock and not by index.
+  const observedRange = useMemo(() => {
+    if (!observed || !times.length) return undefined;
+    const first = observed.timesMs[0];
+    const last = observed.timesMs[observed.timesMs.length - 1];
+    return {
+      from: nearestIndex(times, new Date(first)),
+      to: nearestIndex(times, new Date(last)),
+    };
+  }, [observed, times]);
 
   const visible: SpotEntry[] = useMemo(() => {
     if (!conditions) return [];
@@ -182,6 +218,7 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
           onSelect={setSelectedId}
           layers={layers}
           grid={grid}
+          observed={observed}
           timeIndex={hour ?? 0}
           time={hour === null ? undefined : times[hour]}
         />
@@ -201,6 +238,7 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
           locale={locale}
           t={t}
           sunriseIndex={nearestIndex(times, nextSunrise(conditions.spots))}
+          observedRange={observedRange}
         />
       )}
 

@@ -22,8 +22,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ingest.scoring.beach import score_beach
+from ingest.scoring.cloudtop import ObservedCloud, fuse, nearest_hour_levels
+from ingest.scoring.cloudtop import header as observed_header
 from ingest.scoring.inversion import score_sunrise
 from ingest.sources.base import AtmosphereForecast, OfficialStatus
+from ingest.sources.gmgsi import GmgsiLongwave
 from ingest.sources.ipma import IPMA, active_warnings
 from ingest.sources.openmeteo import OpenMeteoAtmosphere
 from ingest.sources.openmeteo_grid import (
@@ -43,6 +46,10 @@ FORECAST_DAYS = 3
 # as forwards, and a week is what Open-Meteo serves from the forecast endpoint
 # without moving to the archive API, which lags by days.
 GRID_PAST_DAYS = 7
+
+# How many satellite scans to fetch. They are three hours apart, so this is
+# the last full day of observation; see gmgsi.STRIDE_HOURS for why not hourly.
+OBSERVED_SCANS = 9
 
 # How long a published file may be trusted. The web app must show a staleness
 # badge past this and refuse to present scores as current. Generous relative to
@@ -139,6 +146,24 @@ def build_beach(
     return {"days": days}
 
 
+def _reference_levels(
+    atmosphere: dict[str, AtmosphereForecast], when: datetime
+):
+    """One temperature profile to read the whole satellite window against.
+
+    Any viewpoint's column will do. What the infrared conversion needs is the
+    temperature of the lowest couple of kilometres of air over the ocean around
+    Madeira, and every viewpoint in the file sits inside that same air mass -
+    the differences between them are orographic, which is a story about where
+    cloud forms, not about how warm 900hPa is.
+    """
+    for forecast in atmosphere.values():
+        levels = nearest_hour_levels(forecast, when)
+        if levels:
+            return levels
+    return ()
+
+
 def assemble(
     spots: list[Spot],
     atmosphere: dict[str, AtmosphereForecast],
@@ -146,6 +171,7 @@ def assemble(
     status: OfficialStatus | None,
     attributions: list[str],
     grid: CloudGrid | None = None,
+    observed: ObservedCloud | None = None,
 ) -> dict:
     now = datetime.now(tz=timezone.utc)
     entries = []
@@ -193,6 +219,13 @@ def assemble(
         # shaping cloud from the per-spot profiles, which is the pre-volume
         # behaviour - degraded, but not wrong, so it does not fail the run.
         "cloud_grid": grid_header(grid, now) if grid is not None else None,
+        # Observed cloud-top altitude from the satellite mosaic. Absent for the
+        # same reason the volume can be: it is the one layer on the map that is
+        # measured rather than modelled, and it would be worth showing alone -
+        # but the scores do not read it, so it never fails a run.
+        "cloud_observed": (
+            observed_header(observed, now) if observed is not None else None
+        ),
         "spots": entries,
     }
 
@@ -259,7 +292,43 @@ def _validate_grid(document: dict, blob_length: int | None) -> None:
         raise ValidationError("cloud grid and document were generated apart")
 
 
-def validate(document: dict, spots: list[Spot], blob_length: int | None = None) -> None:
+def _validate_observed(document: dict, blob_length: int | None) -> None:
+    """Same contract as the volume: raw bytes, described only from here.
+
+    An observed field is the layer people will trust most, because it is the
+    one that is measured. That makes a misdescribed blob worse here than
+    anywhere else in the document, not better.
+    """
+    meta = document.get("cloud_observed")
+    if meta is None:
+        return
+
+    expected = meta["rows"] * meta["cols"] * len(meta["times"])
+    if meta["bytes"] != expected:
+        raise ValidationError(
+            f"observed cloud declares {meta['bytes']} bytes for {expected} cells"
+        )
+    if blob_length is not None and blob_length != meta["bytes"]:
+        raise ValidationError(
+            f"observed cloud blob is {blob_length} bytes, document says {meta['bytes']}"
+        )
+    if len(meta["lats"]) != meta["rows"] or len(meta["lons"]) != meta["cols"]:
+        raise ValidationError("observed cloud footprint does not match its shape")
+    if meta["lats"] != sorted(meta["lats"], reverse=True):
+        # Row 0 is north. Upside down is indistinguishable from weather.
+        raise ValidationError("observed cloud rows do not run north to south")
+    if not meta["times"]:
+        raise ValidationError("observed cloud has no time axis")
+    if meta["generated_at"] != document["generated_at"]:
+        raise ValidationError("observed cloud and document were generated apart")
+
+
+def validate(
+    document: dict,
+    spots: list[Spot],
+    blob_length: int | None = None,
+    observed_length: int | None = None,
+) -> None:
     if document.get("schema_version") != SCHEMA_VERSION:
         raise ValidationError("schema_version mismatch")
 
@@ -297,6 +366,7 @@ def validate(document: dict, spots: list[Spot], blob_length: int | None = None) 
                     )
 
     _validate_grid(document, blob_length)
+    _validate_observed(document, observed_length)
 
     stale_at = datetime.fromisoformat(document["stale_at"].replace("Z", "+00:00"))
     if stale_at <= datetime.now(tz=timezone.utc):
@@ -324,6 +394,7 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
     attributions: list[str] = []
 
     grid: CloudGrid | None = None
+    observed: ObservedCloud | None = None
 
     if offline:
         # Fixtures cover viewpoints and beaches separately and carry no wind
@@ -362,16 +433,37 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
             # without the volume rather than losing the forecast over it.
             print(f"cloud grid unavailable: {error}", file=sys.stderr)
             grid = None
+        satellite_source = GmgsiLongwave()
+        try:
+            observed = fuse(
+                satellite_source.fetch(OBSERVED_SCANS),
+                lambda when: _reference_levels(atmosphere, when),
+            )
+        except Exception as error:
+            # Reading cloud tops needs h5py and a 40MB download against an AWS
+            # bucket we do not control. None of the scores read it, so a bad
+            # hour there costs the observed layer and nothing else.
+            print(f"observed cloud unavailable: {error}", file=sys.stderr)
+            observed = None
         attributions = [
             atmosphere_source.attribution,
             marine_source.attribution,
         ]
+        if observed is not None:
+            attributions.append(satellite_source.attribution)
         # Only credited when its data is actually in the document.
         if status is not None:
             attributions.append(official_source.attribution)
 
-    document = assemble(spots, atmosphere, marine, status, attributions, grid)
-    validate(document, spots, len(grid.values) if grid else None)
+    document = assemble(
+        spots, atmosphere, marine, status, attributions, grid, observed
+    )
+    validate(
+        document,
+        spots,
+        len(grid.values) if grid else None,
+        len(observed.values) if observed else None,
+    )
 
     if dry_run or out is None:
         return document
@@ -386,6 +478,12 @@ def run(out: Path | None, dry_run: bool, offline: bool) -> dict:
         blob_staging = blob.with_suffix(blob.suffix + ".tmp")
         blob_staging.write_bytes(grid.values)
         blob_staging.replace(blob)
+
+    if observed is not None:
+        observed_blob = out.parent / document["cloud_observed"]["file"]
+        observed_staging = observed_blob.with_suffix(observed_blob.suffix + ".tmp")
+        observed_staging.write_bytes(observed.values)
+        observed_staging.replace(observed_blob)
 
     staging = out.with_suffix(out.suffix + ".tmp")
     staging.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
@@ -410,6 +508,18 @@ def summarise(document: dict) -> str:
             len(meta["altitudes_m"]),
             len(meta["times"]),
             meta["bytes"] / 1024,
+        )
+    )
+    observed_meta = document.get("cloud_observed")
+    lines.append(
+        "observed cloud: none (forecast only)"
+        if observed_meta is None
+        else "observed cloud: {}x{} cells, {} hours, {} to {}".format(
+            observed_meta["cols"],
+            observed_meta["rows"],
+            len(observed_meta["times"]),
+            observed_meta["times"][0],
+            observed_meta["times"][-1],
         )
     )
     lines.append("")
