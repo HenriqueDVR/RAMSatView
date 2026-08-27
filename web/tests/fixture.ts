@@ -85,6 +85,14 @@ export function fixtureConditions(now = Date.now()): Conditions {
                 "temperature inversion present (+3.2 C)",
               ],
             },
+            colour: {
+              value: 74,
+              confidence: 0.55,
+              reasons: [
+                "high cloud at 45% - the band that lights up",
+                "a cloud sea underneath to catch it",
+              ],
+            },
             deck_base_m: 600,
             deck_top_m: 1400,
             inversion_c: 3.2,

@@ -22,19 +22,14 @@ Things the app currently gets wrong, rather than things it does not do yet.
 ## Data the model is missing
 
 - [ ] **Ground-truth calibration loop.** The tunables at the top of
-      `ingest/scoring/inversion.py`, and now `HAZE_K` in
-      `ingest/scoring/calima.py`, are first guesses and have never been
+      `ingest/scoring/inversion.py`, `HAZE_K` in `ingest/scoring/calima.py` and
+      the shape constants in `ingest/scoring/colour.py` are all first guesses and have never been
       checked against what actually happened. Without a way to record "the deck
       was at X this morning" there is no way to know how often the model is
       wrong, or in which direction. The largest single thing standing between
       this and being trustworthy.
 - [ ] **Copernicus raster ingest.** Listed as outstanding since the first
       session; never started.
-- [ ] **Sunrise colour quality.** Not "will I see cloud" but "will it be a
-      *good* sunrise" - high cirrus catches the colour, thick low cloud kills
-      it, and a completely clear sky is flat. The most-asked question this app
-      does not answer. The data is already in the profile we ingest: it needs a
-      scoring term, not a new source.
 
 ## Interface
 
@@ -107,3 +102,8 @@ Things the app currently gets wrong, rather than things it does not do yet.
       scrubber, and a line in the panel. The coefficient is a first guess and
       is named as one - it wants the same calibration as the inversion
       tunables.
+- [x] Sunrise colour: whether the sky will *do* something, rather than whether
+      it is merely visible. `ingest/scoring/colour.py`. Confidence is capped at
+      0.55 on purpose - the light comes from hundreds of kilometres east of
+      anything the model can see, and cirrus is among the worst-forecast
+      fields there is.

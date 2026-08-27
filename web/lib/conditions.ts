@@ -35,6 +35,9 @@ export type ViewpointDay = {
   cloud_sea: Score;
   deck_base_m: number | null;
   deck_top_m: number | null;
+  /** Will the sky actually do something, as opposed to merely being visible.
+   *  Absent from documents published before this existed. */
+  colour?: Score;
   /** Saharan dust over the sunrise window. Absent from documents published
    *  before the air-quality source existed, and absent when that fetch failed
    *  - which is not the same as clear air, and is shown as nothing at all. */

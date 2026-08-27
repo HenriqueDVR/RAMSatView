@@ -38,6 +38,7 @@ from ingest.sources.base import AtmosphereForecast, OfficialStatus
 from ingest.sources.gmgsi import GmgsiLongwave
 from ingest.sources.ipma import IPMA, active_warnings
 from ingest.scoring.calima import Calima
+from ingest.scoring.colour import score_colour
 from ingest.scoring.calima import assess as assess_calima
 from ingest.scoring.calima import worst as worst_calima
 from ingest.sources.base import AirForecast
@@ -200,11 +201,33 @@ def build_viewpoint(
                 [*visibility.reasons, calima.reason],
             )
 
+        # Not "will I see anything" but "will the sky do something", which is
+        # the question people actually ask and the one nothing here answered.
+        # A cloudless dawn scores a hundred on every other number in this
+        # document and is, honestly, dull.
+        colour = score_colour(
+            cloud_high=outlook.cloud_high,
+            cloud_mid=outlook.cloud_mid,
+            summit_cover=outlook.summit_cover,
+            deck_below=(
+                outlook.deck_top_m is not None
+                and outlook.deck_top_m < spot.elevation_m
+            ),
+            aod=calima.aod,
+            haze_clarity=calima.clarity,
+            base_confidence=outlook.visibility.confidence,
+        )
+
         days.append(
             {
                 "date": outlook.day.isoformat(),
                 "sunrise_utc": _iso(outlook.sunrise_utc),
                 "visibility": _score(visibility),
+                "colour": {
+                    "value": colour.value,
+                    "confidence": colour.confidence,
+                    "reasons": colour.reasons,
+                },
                 "calima": {
                     "severity": calima.severity,
                     "aod": None if calima.aod is None else round(calima.aod, 3),

@@ -47,6 +47,7 @@ const DICTIONARY = {
     "calima.slight": "Ligeira bruma do Sara",
     "calima.noticeable": "Poeira do Sara a toldar a vista",
     "calima.heavy": "Calima forte - sem vista",
+    "score.colour": "Cor do nascer",
     "profile.title": "Perfil vertical",
     "profile.caption": "Perfil vertical: nuvem ate {deck} m, cume a {summit} m",
     "profile.at_summit": "Nuvem no cume {pct}%",
@@ -105,6 +106,7 @@ const DICTIONARY = {
     "calima.slight": "Slight Saharan haze",
     "calima.noticeable": "Saharan dust hazing the view",
     "calima.heavy": "Heavy calima - no view",
+    "score.colour": "Sunrise colour",
     "profile.title": "Vertical profile",
     "profile.caption":
       "Vertical profile: cloud to {deck} m, summit at {summit} m",

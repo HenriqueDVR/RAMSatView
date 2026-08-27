@@ -133,6 +133,15 @@ export default function SpotDetail({
               label={t("score.visibility")}
               value={day.visibility.value.toFixed(0)}
             />
+            {/* Not "will I see anything" but "will it be worth seeing". A
+                cloudless dawn scores a hundred on visibility and is dull, and
+                this is the only number here that says so. */}
+            {day.colour !== undefined && (
+              <Fact
+                label={t("score.colour")}
+                value={day.colour.value.toFixed(0)}
+              />
+            )}
             <Fact
               label={t("label.sunrise")}
               value={formatLocalTime(day.sunrise_utc, locale)}
@@ -148,11 +157,13 @@ export default function SpotDetail({
           </dl>
 
           <ul className="reasons">
-            {[...day.cloud_sea.reasons, ...day.visibility.reasons].map(
-              (reason) => (
-                <li key={reason}>{reason}</li>
-              ),
-            )}
+            {[
+              ...day.cloud_sea.reasons,
+              ...day.visibility.reasons,
+              ...(day.colour?.reasons ?? []),
+            ].map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
           </ul>
         </>
       ) : (

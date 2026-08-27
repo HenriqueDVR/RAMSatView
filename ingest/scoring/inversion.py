@@ -64,6 +64,12 @@ class SunriseOutlook:
     # Cloud fraction by altitude at the pivot hour, for the 3D deck and the
     # cross-section chart. The score is a summary of this; the picture is not.
     profile: tuple[tuple[int, float], ...]
+    # The pivot hour's own cloud, carried out rather than recomputed: the
+    # sunrise-colour score needs the same hour these numbers describe, and
+    # finding it a second time is a second chance to find a different one.
+    cloud_high: float = 0.0
+    cloud_mid: float = 0.0
+    summit_cover: float = 0.0
 
 
 # --- profile helpers ------------------------------------------------------
@@ -464,6 +470,9 @@ def score_sunrise(
         cloud_sea=Score(
             round(cloud_sea, 1), round(sea_confidence, 2), pivot[1].reasons
         ),
+        cloud_high=pivot_hour.cloud_cover_high,
+        cloud_mid=pivot_hour.cloud_cover_mid,
+        summit_cover=pivot[2]["summit_cover"],
         deck_base_m=pivot[2]["deck_base_m"],
         deck_top_m=pivot[2]["deck_top_m"],
         inversion_strength_c=round(pivot[2]["inversion_c"], 2),
