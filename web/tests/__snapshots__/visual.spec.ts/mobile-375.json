@@ -4,8 +4,8 @@
     "documentOverflow": 0,
     "boxes": {
       ".map": {
-        "left": 16,
-        "width": 343,
+        "left": 0,
+        "width": 375,
         "overflowsRight": false
       },
       "#spot-pico-arieiro": {
@@ -14,18 +14,18 @@
         "overflowsRight": false
       },
       "#spot-pico-arieiro .profile": {
-        "left": 149,
-        "width": 193,
+        "left": 132,
+        "width": 227,
         "overflowsRight": false
       },
       "#spot-pico-arieiro .dial": {
-        "left": 33,
+        "left": 16,
         "width": 104,
         "overflowsRight": false
       },
       "#spot-pico-arieiro .detail-readout": {
-        "left": 33,
-        "width": 309,
+        "left": 16,
+        "width": 343,
         "overflowsRight": false
       }
     }
@@ -40,8 +40,8 @@
         "overflowsRight": false
       },
       ".sidebar": {
-        "left": 16,
-        "width": 343,
+        "left": 0,
+        "width": 375,
         "overflowsRight": false
       }
     }

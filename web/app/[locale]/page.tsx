@@ -35,15 +35,6 @@ export default async function Page({
 
       <ConditionsView locale={locale} />
 
-      {/*
-        Placed after the data, not buried in a footer link. We report forecast
-        conditions; we do not tell anyone a trail or a summit is safe. IFCN is
-        the authority on trail status and IPMA on warnings.
-      */}
-      <aside className="disclaimer">
-        <strong>{translate(locale, "disclaimer.title")}</strong>
-        <p>{translate(locale, "disclaimer.body")}</p>
-      </aside>
     </main>
   );
 }

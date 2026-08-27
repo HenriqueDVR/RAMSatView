@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fixtureConditions } from "./fixture";
 
 /**
  * Map tests.
@@ -31,22 +32,38 @@ function deckProfile(baseM: number, topM: number): [number, number][] {
 }
 
 /**
- * Serve a conditions document whose deck sits where this test wants it.
+ * Serve the frozen document, optionally with the deck moved where a test wants
+ * it.
  *
- * Live forecasts are the wrong input for a geometry check: most mornings have
- * no deck at all, and "nothing was drawn" would pass a weaker assertion.
+ * Built from ./fixture rather than fetched: a live forecast is the wrong input
+ * for a geometry check, because most mornings have no deck at all and "nothing
+ * was drawn" would pass a weaker assertion. It is also the only way this suite
+ * runs anywhere the ingest has not been run first - on CI there is no
+ * conditions.json beside the export, and fetching it returned the 404 page,
+ * which is where every test in this file failed at once.
  */
-async function withDeck(page: Page, baseM: number, topM: number) {
+async function withConditions(
+  page: Page,
+  deck?: { baseM: number; topM: number },
+) {
   await page.route("**/conditions.json", async (route) => {
-    const response = await route.fetch();
-    const document = await response.json();
-    for (const spot of document.spots) {
-      if (spot.type !== "viewpoint") continue;
-      for (const day of spot.days) day.profile = deckProfile(baseM, topM);
+    const document = fixtureConditions() as unknown as {
+      spots: { type: string; days: { profile: [number, number][] }[] }[];
+    };
+    if (deck) {
+      for (const spot of document.spots) {
+        if (spot.type !== "viewpoint") continue;
+        for (const day of spot.days) {
+          day.profile = deckProfile(deck.baseM, deck.topM);
+        }
+      }
     }
-    await route.fulfill({ response, json: document });
+    await route.fulfill({ json: document });
   });
 }
+
+const withDeck = (page: Page, baseM: number, topM: number) =>
+  withConditions(page, { baseM, topM });
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -86,6 +103,7 @@ test("map renders terrain and imagery without console errors", async ({
 test("attribution names both the imagery and the terrain source", async ({
   page,
 }) => {
+  await withConditions(page);
   await page.goto("/en");
   await waitForMap(page);
   const attribution = await page
@@ -134,6 +152,7 @@ test("a deck above the summit swallows it", async ({ page }, testInfo) => {
 test("DEM tiles are filtered rather than falling back to raw", async ({
   page,
 }) => {
+  await withConditions(page);
   await page.goto("/en");
   await waitForMap(page);
   // Polled, not sampled once: decoding, despiking and re-encoding a tile goes
@@ -143,21 +162,27 @@ test("DEM tiles are filtered rather than falling back to raw", async ({
   const stats = async () =>
     page.evaluate(
       () =>
-        (window as unknown as { __demStats?: Record<string, number> }).__demStats
+        (window as unknown as { __demStats?: Record<string, number> })
+          .__demStats,
     );
   // The raw fallback is silent on purpose. A regression that sends every tile
   // down it puts the DEM spikes back and looks like nothing at all.
-  await expect.poll(async () => (await stats())?.cleaned ?? 0, {
-    timeout: 60_000,
-  }).toBeGreaterThan(0);
+  await expect
+    .poll(async () => (await stats())?.cleaned ?? 0, {
+      timeout: 60_000,
+    })
+    .toBeGreaterThan(0);
   expect((await stats())!.raw).toBe(0);
 });
 
 test("the page does not scroll sideways", async ({ page }) => {
+  await withConditions(page);
   await page.goto("/en");
   await waitForMap(page);
   const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
 });

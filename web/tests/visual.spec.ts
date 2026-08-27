@@ -20,7 +20,7 @@ test.use({ timezoneId: "Atlantic/Madeira", locale: "en-GB" });
 
 async function withFixture(page: Page) {
   await page.route("**/conditions.json", (route) =>
-    route.fulfill({ json: fixtureConditions() })
+    route.fulfill({ json: fixtureConditions() }),
   );
 }
 
@@ -35,7 +35,10 @@ function collectErrors(page: Page): string[] {
 
 /** outerHTML, one tag per line, so a diff points at the element that moved. */
 async function markup(page: Page, selector: string): Promise<string> {
-  const html = await page.locator(selector).first().evaluate((node) => node.outerHTML);
+  const html = await page
+    .locator(selector)
+    .first()
+    .evaluate((node) => node.outerHTML);
   return html.replace(/></g, ">\n<").trim() + "\n";
 }
 
@@ -54,7 +57,7 @@ test.describe("structure", () => {
     await page.locator("#row-pico-arieiro").click();
     await page.waitForSelector("#spot-pico-arieiro");
     expect(await markup(page, "#spot-pico-arieiro")).toMatchSnapshot(
-      "viewpoint-detail.html"
+      "viewpoint-detail.html",
     );
   });
 
@@ -66,7 +69,7 @@ test.describe("structure", () => {
     await page.locator("#row-porto-santo-beach").click();
     await page.waitForSelector("#spot-porto-santo-beach");
     expect(await markup(page, "#spot-porto-santo-beach")).toMatchSnapshot(
-      "beach-detail.html"
+      "beach-detail.html",
     );
   });
 
@@ -75,12 +78,14 @@ test.describe("structure", () => {
     await page.goto("/en");
     await page.waitForSelector(".statusbar .official");
     expect(await markup(page, ".statusbar .official")).toMatchSnapshot(
-      "official-warning.html"
+      "official-warning.html",
     );
   });
 });
 
-test("map at the default camera draws and logs nothing", async ({ page }, testInfo) => {
+test("map at the default camera draws and logs nothing", async ({
+  page,
+}, testInfo) => {
   const errors = collectErrors(page);
   await withFixture(page);
   await page.goto("/en");
@@ -89,12 +94,16 @@ test("map at the default camera draws and logs nothing", async ({ page }, testIn
   await page.waitForTimeout(6_000);
 
   const camera = await page.evaluate(() => {
-    const map = (window as unknown as { __satappMap?: {
-      getZoom(): number;
-      getPitch(): number;
-      getBearing(): number;
-      getTerrain(): unknown;
-    } }).__satappMap;
+    const map = (
+      window as unknown as {
+        __satappMap?: {
+          getZoom(): number;
+          getPitch(): number;
+          getBearing(): number;
+          getTerrain(): unknown;
+        };
+      }
+    ).__satappMap;
     if (!map) return null;
     return {
       zoom: Number(map.getZoom().toFixed(2)),
@@ -117,10 +126,17 @@ test("map at the default camera draws and logs nothing", async ({ page }, testIn
   expect(errors).toEqual([]);
 });
 
-test("375px lays out in one column with nothing off-screen", async ({ page }) => {
+test("375px lays out in one column with nothing off-screen", async ({
+  page,
+}) => {
   await withFixture(page);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/en");
+  // The sheet opens collapsed, so the list is not on screen until it is asked
+  // for: peek -> detail -> full, one tap each.
+  const handle = page.locator(".sheet-handle");
+  await handle.click();
+  await handle.click();
   await page.locator("#row-pico-arieiro").click();
   await page.waitForSelector("#spot-pico-arieiro");
 
@@ -153,7 +169,12 @@ test("375px lays out in one column with nothing off-screen", async ({ page }) =>
     "#spot-pico-arieiro .dial",
     "#spot-pico-arieiro .detail-readout",
   ]);
+  // Collapse before switching lists, the way a thumb would: the open sheet is
+  // most of the screen and the tabs are above it.
+  await handle.click();
   await page.getByRole("tab", { name: "Beaches" }).click();
+  await handle.click();
+  await handle.click();
   await page.locator("#row-porto-santo-beach").click();
   await page.waitForSelector("#spot-porto-santo-beach");
   const beach = await boxes(["#spot-porto-santo-beach", ".sidebar"]);
@@ -162,9 +183,10 @@ test("375px lays out in one column with nothing off-screen", async ({ page }) =>
     expect(measured.documentOverflow).toBeLessThanOrEqual(0);
     for (const [selector, value] of Object.entries(measured.boxes)) {
       expect(value, `${selector} is missing`).not.toBeNull();
-      expect(value!.overflowsRight, `${selector} extends past the viewport`).toBe(
-        false
-      );
+      expect(
+        value!.overflowsRight,
+        `${selector} extends past the viewport`,
+      ).toBe(false);
     }
   }
   // The dial and the profile share a row inside the detail panel, by design. What
@@ -177,9 +199,59 @@ test("375px lays out in one column with nothing off-screen", async ({ page }) =>
   expect(profile.width + dial.width).toBeLessThanOrEqual(readout.width);
   // One column: the beach detail starts where the viewpoint detail does.
   expect(beach.boxes["#spot-porto-santo-beach"]!.left).toBe(
-    viewpoint.boxes["#spot-pico-arieiro"]!.left
+    viewpoint.boxes["#spot-pico-arieiro"]!.left,
   );
 
   const layout = { viewpoint, beach };
   expect(JSON.stringify(layout, null, 2)).toMatchSnapshot("mobile-375.json");
+});
+
+test("the phone keeps the map and brings the numbers up over it", async ({
+  page,
+}) => {
+  test.skip(test.info().project.name !== "mobile", "phone layout only");
+  await withFixture(page);
+  await page.goto("/en");
+
+  const sheet = page.locator(".sidebar");
+  const state = () => sheet.getAttribute("data-sheet");
+
+  // The map is the page: it fills the viewport rather than sitting in a band
+  // at the top of a document that scrolls. This is the regression that matters
+  // - everything else here is the sheet built on top of it.
+  const map = await page.locator(".map").boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(map!.width).toBe(viewport.width);
+  expect(Math.round(map!.height)).toBe(viewport.height);
+
+  await expect.poll(state).toBe("peek");
+  await expect(page.locator(".spot-list")).toBeHidden();
+
+  // Tapping a pin asks about that spot, and the sheet answers with it rather
+  // than with the ranking.
+  //
+  // By name, and only once the pins are up: the marker layer rebuilds its
+  // elements when the map finishes loading, and a click racing that rebuild
+  // lands on a button that has already been replaced.
+  await page.waitForSelector(".map-pin");
+  await page.getByRole("button", { name: /Pico Ruivo/ }).click();
+  await expect.poll(state).toBe("detail");
+  await expect(page.locator(".spot-detail h3")).toHaveText("Pico Ruivo");
+  await expect(page.locator(".spot-list")).toBeHidden();
+
+  // And the list is one tap further on.
+  await page.locator(".sheet-handle").click();
+  await expect.poll(state).toBe("full");
+  await expect(page.locator(".spot-list")).toBeVisible();
+
+  // Nothing about any of this scrolls the page out from under the map.
+  const overflow = await page.evaluate(() => ({
+    x:
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+    y:
+      document.documentElement.scrollHeight -
+      document.documentElement.clientHeight,
+  }));
+  expect(overflow).toEqual({ x: 0, y: 0 });
 });

@@ -13,7 +13,7 @@ import { fixtureConditions } from "./fixture";
 // deck in it.
 test.beforeEach(async ({ page }) => {
   await page.route("**/conditions.json", (route) =>
-    route.fulfill({ json: fixtureConditions() })
+    route.fulfill({ json: fixtureConditions() }),
   );
 });
 
@@ -28,6 +28,19 @@ async function openPanel(page: Page) {
   await page.getByRole("button", { name: /layers/i }).click();
 }
 
+/**
+ * How long a toggle is given to reach the map.
+ *
+ * Playwright's default for `expect.poll` is five seconds, which is a fine
+ * budget for a machine with a GPU and is not one here: the switch flips React
+ * state immediately, but the map only applies it once the style is loaded, and
+ * under SwiftShader with the whole suite queued behind it that can take
+ * considerably longer than five seconds. Failing at five was a false negative
+ * - the test passed on its own every time and only fell over inside the full
+ * run.
+ */
+const APPLIED_TIMEOUT = { timeout: 30_000 };
+
 test("the panel starts closed and opens on demand", async ({ page }) => {
   await page.goto("/en/");
   const list = page.locator(".layer-list");
@@ -37,24 +50,25 @@ test("the panel starts closed and opens on demand", async ({ page }) => {
   await expect(page.getByRole("checkbox", { name: "Satellite" })).toBeChecked();
 });
 
-test("turning the satellite off hides the imagery", async ({
-  page,
-}) => {
+test("turning the satellite off hides the imagery", async ({ page }) => {
   await page.goto("/en/");
   await waitForMap(page);
   await openPanel(page);
   await page.getByRole("checkbox", { name: "Satellite" }).uncheck();
 
   await expect
-    .poll(async () =>
-      page.evaluate(
-        () =>
+    .poll(
+      async () =>
+        page.evaluate(() =>
           (
             window as unknown as {
-              __satappMap: { getLayoutProperty: (id: string, key: string) => unknown };
+              __satappMap: {
+                getLayoutProperty: (id: string, key: string) => unknown;
+              };
             }
-          ).__satappMap.getLayoutProperty("satellite", "visibility")
-      )
+          ).__satappMap.getLayoutProperty("satellite", "visibility"),
+        ),
+      APPLIED_TIMEOUT,
     )
     .toBe("none");
 
@@ -64,7 +78,7 @@ test("turning the satellite off hides the imagery", async ({
   // yet is a race, and attributing imagery that is not currently drawn breaks
   // no licence in the direction that matters.
   await expect(page.locator(".maplibregl-ctrl-attrib-inner")).toContainText(
-    "AWS Terrain Tiles"
+    "AWS Terrain Tiles",
   );
 });
 
@@ -75,15 +89,17 @@ test("turning 3D terrain off detaches the terrain", async ({ page }) => {
   await page.getByRole("checkbox", { name: "3D terrain" }).uncheck();
 
   await expect
-    .poll(async () =>
-      page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __satappMap: { getTerrain: () => unknown };
-            }
-          ).__satappMap.getTerrain() === null
-      )
+    .poll(
+      async () =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __satappMap: { getTerrain: () => unknown };
+              }
+            ).__satappMap.getTerrain() === null,
+        ),
+      APPLIED_TIMEOUT,
     )
     .toBe(true);
 });

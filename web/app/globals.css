@@ -24,8 +24,9 @@
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   /* Readouts only. Numbers that change - scores, altitudes, times - are easier
      to compare when the digits do not move about. */
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
-    Consolas, monospace;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas,
+    monospace;
 
   /* --- shape: cards 12, small surfaces 8, controls pill. No other radii. --- */
   --r-sm: 8px;
@@ -139,7 +140,8 @@ body {
   padding: var(--s-1) var(--s-3);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  transition: color var(--dur-1) var(--ease),
+  transition:
+    color var(--dur-1) var(--ease),
     border-color var(--dur-1) var(--ease);
 }
 
@@ -210,7 +212,8 @@ body {
   font: inherit;
   font-size: var(--t-sm);
   cursor: pointer;
-  transition: color var(--dur-1) var(--ease),
+  transition:
+    color var(--dur-1) var(--ease),
     border-color var(--dur-1) var(--ease),
     background-color var(--dur-1) var(--ease);
 }
@@ -286,8 +289,11 @@ body {
   cursor: pointer;
   /* Two shadows: a tight dark one to lift the pin off the terrain, and a wide
      tinted one that carries the score colour at a glance from across the map. */
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.55), 0 0 12px -2px var(--pin, transparent);
-  transition: transform var(--dur-1) var(--ease),
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 0.55),
+    0 0 12px -2px var(--pin, transparent);
+  transition:
+    transform var(--dur-1) var(--ease),
     box-shadow var(--dur-1) var(--ease);
 }
 
@@ -299,7 +305,9 @@ body {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
   transform: scale(1.12);
-  box-shadow: 0 2px 6px rgb(0 0 0 / 0.6), 0 0 20px -2px var(--pin, transparent);
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 0.6),
+    0 0 20px -2px var(--pin, transparent);
 }
 
 /* The attribution control wraps to four lines at 375px and eats the map. */
@@ -325,6 +333,17 @@ body {
   margin-top: var(--s-5);
 }
 
+/* Phone-only chrome. `display: contents` is what keeps the desktop column
+   exactly what it was: the wrapper the sheet needs disappears from layout
+   entirely and its children stay direct children of the sidebar. */
+.sheet-handle {
+  display: none;
+}
+
+.sheet-body {
+  display: contents;
+}
+
 .spot-list {
   display: flex;
   flex-direction: column;
@@ -347,7 +366,8 @@ body {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-1) var(--ease),
+  transition:
+    background var(--dur-1) var(--ease),
     border-color var(--dur-1) var(--ease);
 }
 
@@ -641,7 +661,6 @@ body {
   }
 }
 
-
 /* ---------------------------------------------------------------------------
    HUD
 
@@ -662,7 +681,9 @@ body {
   -webkit-backdrop-filter: var(--hud-blur);
   border: 1px solid var(--hud-line);
   border-radius: var(--r-md);
-  box-shadow: var(--e-2), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  box-shadow:
+    var(--e-2),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
 }
 
 /* --- layer panel --- */
@@ -691,14 +712,17 @@ body {
   -webkit-backdrop-filter: var(--hud-blur);
   border: 1px solid var(--hud-line);
   box-shadow: var(--e-1);
-  transition: border-color var(--dur-1) var(--ease),
+  transition:
+    border-color var(--dur-1) var(--ease),
     box-shadow var(--dur-1) var(--ease);
 }
 
 .layer-toggle:hover,
 .layer-panel.open .layer-toggle {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--hud-glow), var(--e-1);
+  box-shadow:
+    0 0 0 1px var(--hud-glow),
+    var(--e-1);
 }
 
 /* Three stacked bars: layers, without a word for it in any language. */
@@ -726,7 +750,9 @@ body {
   -webkit-backdrop-filter: var(--hud-blur);
   border: 1px solid var(--hud-line);
   border-radius: var(--r-md);
-  box-shadow: var(--e-2), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  box-shadow:
+    var(--e-2),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
 }
 
 /* `hidden` is an attribute, `display: grid` is a declaration, and the
@@ -773,7 +799,6 @@ body {
   color: var(--accent);
 }
 
-
 /* --- time scrubber --- */
 
 /* A week back, three days forward. The control is wide because the gesture is
@@ -788,7 +813,9 @@ body {
   -webkit-backdrop-filter: var(--hud-blur);
   border: 1px solid var(--hud-line);
   border-radius: var(--r-md);
-  box-shadow: var(--e-2), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  box-shadow:
+    var(--e-2),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
 }
 
 .scrubber-readout {
@@ -971,7 +998,9 @@ body {
     -webkit-backdrop-filter: var(--hud-blur);
     border: 1px solid var(--hud-line);
     border-radius: var(--r-md);
-    box-shadow: var(--e-2), inset 0 1px 0 rgb(255 255 255 / 0.05);
+    box-shadow:
+      var(--e-2),
+      inset 0 1px 0 rgb(255 255 255 / 0.05);
   }
 
   .masthead h1 {
@@ -1025,7 +1054,9 @@ body {
     -webkit-backdrop-filter: var(--hud-blur);
     border: 1px solid var(--hud-line);
     border-radius: var(--r-md);
-    box-shadow: var(--e-2), inset 0 1px 0 rgb(255 255 255 / 0.05);
+    box-shadow:
+      var(--e-2),
+      inset 0 1px 0 rgb(255 255 255 / 0.05);
   }
 
   /* Transparent inside the glass: two panels nested inside each other read as
@@ -1042,32 +1073,39 @@ body {
      of small print and it belongs with the panel whose imagery it credits.
      Kept out of the sidebar's own scroll so it cannot be scrolled away - EOX's
      CC BY-NC-SA is a condition of using the tiles at all. */
+  /* Inside the sidebar's glass now rather than in a box of its own below it -
+     the sheet on a phone has to carry it, and one place in the markup is worth
+     more than the second box was. The tile licence is not resting on this
+     either way: MapLibre's own attribution control is on the map at every
+     width, which is what EOX's CC BY-NC-SA actually requires. */
   .attribution {
     flex: none;
-    width: min(24rem, 34vw);
-    margin: var(--s-3) var(--s-4) 0;
+    width: auto;
   }
 
-  /* The safety notice goes to the opposite corner rather than into the column.
-     As a flex item it competed with the sidebar for height and won - a
-     140-pixel block of legal text left the spot list about two rows tall. */
-  .disclaimer {
-    position: fixed;
-    right: var(--s-4);
-    bottom: 140px;
-    width: min(26rem, 32vw);
-    margin: 0;
-  }
-
+  /* Both ride at the bottom of the sidebar's own scroll now.
+     The notice used to be pinned to the opposite corner with `position:
+     fixed`, because as a flex item of the page it competed with the sidebar
+     for height and won - 140 pixels of legal text left the spot list about two
+     rows tall. Inside the sidebar it competes with nothing: the column scrolls
+     and this sits under the detail. Pinning it is no longer even possible
+     here, which is worth knowing - the sidebar carries a `backdrop-filter`,
+     and a filtered ancestor becomes the containing block for `position:
+     fixed`, so the notice positioned itself against the sidebar and hung off
+     the left of the screen. */
   .attribution,
   .disclaimer {
-    margin: var(--s-4);
-    padding: var(--s-4) var(--s-5);
-    background: var(--hud-bg);
-    backdrop-filter: var(--hud-blur);
-    -webkit-backdrop-filter: var(--hud-blur);
-    border: 1px solid var(--hud-line);
-    border-radius: var(--r-md);
+    margin: var(--s-3) 0 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--hud-line);
+    border-radius: 0;
+    padding-top: var(--s-3);
+  }
+
+  .disclaimer {
+    width: auto;
   }
 
   /* Tucked under the masthead, and deliberately not at the bottom of the map.
@@ -1107,7 +1145,6 @@ body {
     transition: none;
   }
 }
-
 
 /* --- cloud-top legend --- */
 
@@ -1228,5 +1265,228 @@ body {
   /* Clear of the masthead, which now runs the full width of the map. */
   .maplibregl-ctrl-top-right {
     top: 76px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Phone: the map is the page here too, and the numbers arrive on a sheet
+
+   This used to be a stacked document - map in a band at the top, list of spots
+   under it - and reading a spot meant scrolling the map off the screen. The
+   map is the answer, so it now owns the viewport at every width and the sheet
+   comes up over it when a pin is tapped.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 1023.98px) {
+  .page {
+    /* Roughly the collapsed sheet: the grip, plus one row of score and name.
+       Stated once because the page's bottom padding and the scrubber's
+       clearance both have to agree with it. */
+    --sheet-peek: 5.5rem;
+    max-width: none;
+    padding: 0 0 calc(var(--sheet-peek) + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  /* Fixed, like desktop: the ground the readouts stand on. */
+  .stage {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+
+  .map {
+    height: 100%;
+    border: none;
+    border-radius: 0;
+  }
+
+  .masthead,
+  .statusbar,
+  .tabs,
+  .layer-panel,
+  .scrubber,
+  .legend,
+  .state {
+    position: relative;
+    z-index: 2;
+  }
+
+  .masthead {
+    margin: var(--s-3) var(--s-3) 0;
+    padding: var(--s-2) var(--s-3);
+    border-bottom: none;
+    background: var(--hud-bg);
+    backdrop-filter: var(--hud-blur);
+    -webkit-backdrop-filter: var(--hud-blur);
+    border: 1px solid var(--hud-line);
+    border-radius: var(--r-md);
+  }
+
+  .masthead h1 {
+    font-size: var(--t-md);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  /* The tagline is a sentence, and a sentence is two lines at 375px. It says
+     nothing the map does not. */
+  .masthead > p.muted {
+    display: none;
+  }
+
+  .statusbar,
+  .tabs,
+  .layer-panel {
+    margin: var(--s-2) var(--s-3) 0;
+  }
+
+  /* Above the scrubber, which is now pinned to the bottom of the column: the
+     open layer list drops down into it, and the hour readout was taking the
+     clicks meant for the checkboxes. */
+  .layer-panel {
+    z-index: 4;
+  }
+
+  .statusbar,
+  .tab {
+    background: var(--hud-bg);
+    backdrop-filter: var(--hud-blur);
+    -webkit-backdrop-filter: var(--hud-blur);
+    border: 1px solid var(--hud-line);
+  }
+
+  .statusbar {
+    padding: var(--s-2) var(--s-3);
+    border-radius: var(--r-md);
+  }
+
+  /* Pushed to the bottom of the column, which puts it directly above the
+     collapsed sheet without anyone typing an offset that stops being true the
+     moment the masthead wraps. */
+  .scrubber {
+    margin: auto var(--s-3) 0;
+  }
+
+  .legend {
+    align-self: flex-end;
+    margin: var(--s-2) var(--s-3) 0;
+  }
+
+  /* --- the sheet --- */
+
+  .sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    gap: 0;
+    margin: 0;
+    padding: 0 var(--s-4) calc(var(--s-3) + env(safe-area-inset-bottom, 0px));
+    /* Never tall enough to reach the tabs. It was, and the sheet at full
+       height covered them: switching from viewpoints to beaches meant
+       collapsing the sheet first, which is not a thing anyone would guess.
+       The ceiling has to clear the tallest the HUD above it gets, which is a
+       day with an official warning in the status bar - not the quiet day this
+       was first eyeballed on. */
+    max-height: 60dvh;
+    background: var(--hud-bg);
+    backdrop-filter: var(--hud-blur);
+    -webkit-backdrop-filter: var(--hud-blur);
+    border-top: 1px solid var(--hud-line);
+    border-radius: var(--r-md) var(--r-md) 0 0;
+    box-shadow: 0 -12px 32px -12px rgb(0 0 0 / 0.7);
+  }
+
+  .sheet-handle {
+    display: grid;
+    gap: var(--s-2);
+    width: 100%;
+    /* Generous: this is the control the whole sheet is driven by and it is hit
+       with a thumb, at the very bottom of the screen. */
+    padding: var(--s-3) 0;
+    background: none;
+    border: 0;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    /* The drag never becomes a browser gesture: without this a downward swipe
+       on the handle is pull-to-refresh on Android and an overscroll bounce on
+       iOS, and the sheet stays where it was. */
+    touch-action: none;
+  }
+
+  .sheet-grip {
+    justify-self: center;
+    width: 2.5rem;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--hud-line);
+  }
+
+  .sheet-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    min-width: 0;
+  }
+
+  .sheet-summary .spot-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar[data-sheet="peek"] .sheet-body {
+    display: none;
+  }
+
+  .sidebar[data-sheet="detail"] .sheet-body,
+  .sidebar[data-sheet="full"] .sheet-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    /* min-height: 0 is load-bearing on a flex child that has to scroll rather
+       than push the sheet past the top of the screen. */
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Tapping a pin asked about that spot, not about the ranking. */
+  .sidebar[data-sheet="detail"] .spot-list,
+  .sidebar[data-sheet="detail"] .disclaimer,
+  .sidebar[data-sheet="detail"] .attribution {
+    display: none;
+  }
+
+  .sidebar[data-sheet="detail"] .sheet-body {
+    max-height: 40dvh;
+  }
+
+  .sidebar[data-sheet="full"] .sheet-body {
+    max-height: 48dvh;
+  }
+
+  /* Transparent inside the glass, for the same reason as on desktop: a panel
+     nested in a panel reads as a widget in a box. */
+  .spot-detail {
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--hud-line);
+    border-radius: 0;
+    padding: var(--s-3) 0 0;
+  }
+
+  .disclaimer {
+    margin: 0;
+  }
+
+  .attribution {
+    margin: 0;
   }
 }

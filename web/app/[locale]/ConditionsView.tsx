@@ -6,6 +6,7 @@ import LayerPanel from "@/components/LayerPanel";
 import TimeScrubber from "@/components/TimeScrubber";
 import Sidebar from "@/components/Sidebar";
 import CloudTopLegend from "@/components/CloudTopLegend";
+import type { SheetState } from "@/components/Sidebar";
 import StatusBar from "@/components/StatusBar";
 import {
   conditionsUrl,
@@ -15,15 +16,8 @@ import {
   type Conditions,
   type SpotEntry,
 } from "@/lib/conditions";
-import {
-  loadCloudGrid,
-  timeIndexFor,
-  type CloudGrid,
-} from "@/lib/cloudGrid";
-import {
-  loadObservedCloud,
-  type ObservedCloud,
-} from "@/lib/observedCloud";
+import { loadCloudGrid, timeIndexFor, type CloudGrid } from "@/lib/cloudGrid";
+import { loadObservedCloud, type ObservedCloud } from "@/lib/observedCloud";
 import { nearestIndex } from "@/lib/timeline";
 import { translator, type Locale } from "@/lib/i18n";
 import {
@@ -59,7 +53,9 @@ function nextSunrise(spots: SpotEntry[], now = new Date()): Date {
     .map((day) => new Date(day.sunrise_utc))
     .sort((a, b) => a.getTime() - b.getTime());
   if (!sunrises.length) return now;
-  return sunrises.find((time) => time.getTime() >= now.getTime()) ?? sunrises[0];
+  return (
+    sunrises.find((time) => time.getTime() >= now.getTime()) ?? sunrises[0]
+  );
 }
 
 export default function ConditionsView({ locale }: { locale: Locale }) {
@@ -69,6 +65,19 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("viewpoint");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Phone only - on desktop the sidebar is a column and this is ignored.
+  // Starts collapsed so the map is the whole screen on first paint, which is
+  // the point of the sheet.
+  const [sheet, setSheet] = useState<SheetState>("peek");
+
+  // Picking a spot - from a pin or from the list - brings its numbers up. From
+  // the collapsed state that means opening the sheet to the detail; from the
+  // full list it means leaving the list where it is, because someone reading
+  // down the ranking did not ask for it to close under them.
+  const selectSpot = useCallback((id: string) => {
+    setSelectedId(id);
+    setSheet((current) => (current === "peek" ? "detail" : current));
+  }, []);
   const [layers, setLayers] = useState<LayerState>(DEFAULT_LAYERS);
   const [grid, setGrid] = useState<CloudGrid | null>(null);
   const [observed, setObserved] = useState<ObservedCloud | null>(null);
@@ -143,7 +152,7 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
 
   const times = useMemo(
     () => grid?.timesMs.map((ms) => new Date(ms)) ?? [],
-    [grid]
+    [grid],
   );
 
   // Where the satellite's span falls on the forecast's track. The two axes
@@ -202,6 +211,9 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
             onClick={() => {
               setTab(value);
               setSelectedId(null);
+              // A different list, so the sheet goes back to showing the top of
+              // it rather than staying open on a spot that is no longer there.
+              setSheet("peek");
             }}
           >
             {value === "viewpoint" ? t("nav.viewpoints") : t("nav.beaches")}
@@ -224,7 +236,7 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
           spots={visible}
           locale={locale}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={selectSpot}
           layers={layers}
           grid={grid}
           observed={observed}
@@ -260,17 +272,31 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
       <Sidebar
         spots={visible}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={selectSpot}
         locale={locale}
         t={t}
-      />
+        sheet={sheet}
+        onSheetChange={setSheet}
+        legal={
+          <>
+            {/* Placed with the data, not buried behind a link. We report
+                forecast conditions; we do not tell anyone a trail or a summit
+                is safe. IFCN is the authority on trail status and IPMA on
+                warnings. */}
+            <aside className="disclaimer">
+              <strong>{t("disclaimer.title")}</strong>
+              <p>{t("disclaimer.body")}</p>
+            </aside>
 
-      <footer className="attribution">
-        <p>
-          <strong>{t("footer.data")}:</strong>{" "}
-          {conditions.attribution.join(" · ")}
-        </p>
-      </footer>
+            <footer className="attribution">
+              <p>
+                <strong>{t("footer.data")}:</strong>{" "}
+                {conditions.attribution.join(" · ")}
+              </p>
+            </footer>
+          </>
+        }
+      />
     </>
   );
 }
