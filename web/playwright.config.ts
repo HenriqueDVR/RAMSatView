@@ -7,6 +7,46 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * Run `npm run build` first, or let webServer do it.
  */
+/**
+ * Which specs need a rendered map, and which are pure functions.
+ *
+ * The split exists because they cost three orders of magnitude apart. A map
+ * spec software-renders terrain, imagery and a cloud volume through
+ * SwiftShader on the CPU, at a few frames a second; the logic specs never open
+ * a page at all and the whole set of them finishes in seconds. Running the
+ * lot on every save meant a quarter of an hour and a pinned CPU to check a
+ * function that takes bytes and returns a colour.
+ *
+ * Listed rather than inferred from a directory, and guarded: tests/suite.spec.ts
+ * fails if a spec file appears in neither list, so a new one cannot silently
+ * end up in no project and never run.
+ */
+export const LOGIC_SPECS = [
+  "cloudGrid.spec.ts",
+  "conditions.spec.ts",
+  "dem.spec.ts",
+  "observedCloud.spec.ts",
+  "spotHours.spec.ts",
+  "suite.spec.ts",
+  "sun.spec.ts",
+  "timeline.spec.ts",
+];
+
+export const MAP_SPECS = [
+  "callout.spec.ts",
+  "hours.spec.ts",
+  "layers.spec.ts",
+  "lighting.spec.ts",
+  "map.spec.ts",
+  "renders.spec.ts",
+  "scrubber.spec.ts",
+  "visual.spec.ts",
+];
+
+/** Anchored at the end, so `map.spec.ts` cannot also match `heatmap.spec.ts`. */
+const match = (names: string[]) =>
+  names.map((name) => new RegExp(`[\\/]${name.replaceAll(".", "[.]")}$`));
+
 export default defineConfig({
   testDir: "./tests",
   // Markup and layout snapshots do not vary by OS, so the default per-platform
@@ -44,9 +84,21 @@ export default defineConfig({
     },
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+    // No page, no browser: Playwright only launches Chromium for a test that
+    // asks for the `page` fixture, and none of these do.
+    {
+      name: "logic",
+      testMatch: match(LOGIC_SPECS),
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "desktop",
+      testMatch: match(MAP_SPECS),
+      use: { ...devices["Desktop Chrome"] },
+    },
     {
       name: "mobile",
+      testMatch: match(MAP_SPECS),
       use: {
         ...devices["Pixel 7"],
         // Pixel 7 ships a device scale factor of 3, which asks SwiftShader for

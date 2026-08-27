@@ -30,7 +30,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [desktop, mobile]
+        # `logic` is the cheap half - no browser, no map, seconds - and it runs
+        # here rather than only on a developer's machine so a push is checked
+        # even when someone skipped it locally. The two map projects are the
+        # expensive half and are the reason this is a matrix at all.
+        project: [logic, desktop, mobile]
     timeout-minutes: 40
     defaults:
       run:
@@ -64,6 +68,8 @@ jobs:
         run: npm run build
 
       - name: Install Chromium
+        # The logic project never opens a page, so it never needs a browser.
+        if: matrix.project != 'logic'
         run: npx playwright install --with-deps chromium
 
       - name: Test
