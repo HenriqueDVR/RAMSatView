@@ -32,6 +32,41 @@ async function openOnRuivo(page: Page) {
 }
 
 /**
+ * Wait for the selected pin's own scale to stop moving.
+ *
+ * `.map-pin.selected` reaches its scale through `transition: transform`, so a
+ * read taken in the same tick as the click sees the identity matrix and the
+ * grown pin looks like it never grew. Settle before measuring the scale - not
+ * before measuring position, which several tests read mid-movement on purpose.
+ */
+async function settleSelectedPin(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const pin = document.querySelector(".map-pin.selected") as HTMLElement;
+        if (!pin) {
+          resolve();
+          return;
+        }
+        const grown = new DOMMatrixReadOnly(getComputedStyle(pin).transform).a;
+        if (grown > 1) {
+          resolve();
+          return;
+        }
+        const done = () => {
+          pin.removeEventListener("transitionend", done);
+          clearTimeout(timer);
+          resolve();
+        };
+        // The transition may already have ended - or never have started, if
+        // the class landed while the tab was throttled - so cap the wait.
+        const timer = setTimeout(done, 1000);
+        pin.addEventListener("transitionend", done);
+      }),
+  );
+}
+
+/**
  * Where the map has put the pin and the callout, in one read.
  *
  * The anchors are measured rather than the rendered boxes. A selected pin
@@ -108,6 +143,7 @@ test.describe("desktop", () => {
     page,
   }) => {
     await openOnRuivo(page);
+    await settleSelectedPin(page);
     const { pinTransform, anchorTransform } = await geometry(page);
 
     // The wrapper carries MapLibre's positioning.
@@ -180,7 +216,7 @@ test("a phone gets the sheet instead of a callout", async ({ page }) => {
   // underneath itself.
   await expect(page.locator(".sidebar")).toHaveAttribute(
     "data-sheet",
-    "detail",
+    "open",
     { timeout: 30_000 },
   );
   await expect(page.locator(".sheet-summary")).toContainText("Pico Ruivo");

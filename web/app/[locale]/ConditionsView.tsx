@@ -17,10 +17,14 @@ import {
   type SpotEntry,
 } from "@/lib/conditions";
 import { loadCloudGrid, timeIndexFor, type CloudGrid } from "@/lib/cloudGrid";
-import { loadObservedCloud, type ObservedCloud } from "@/lib/observedCloud";
+import {
+  loadObservedCloud,
+  nearestHourIndex,
+  type ObservedCloud,
+} from "@/lib/observedCloud";
 import { loadSpotHours, type SpotHours } from "@/lib/spotHours";
 import { nearestIndex } from "@/lib/timeline";
-import { translator, type Locale } from "@/lib/i18n";
+import { formatLocalTime, translator, type Locale } from "@/lib/i18n";
 import {
   DEFAULT_LAYERS,
   exclusiveLayers,
@@ -37,6 +41,9 @@ const MapView = dynamic(() => import("@/components/Map"), {
 });
 
 type Tab = "viewpoint" | "beach";
+
+/** Where the time control's on/off preference is remembered. */
+const TIME_KEY = "satapp:show-time";
 
 /**
  * The next sunrise the forecast covers, which is where the scrubber starts.
@@ -70,14 +77,38 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
   // Starts collapsed so the map is the whole screen on first paint, which is
   // the point of the sheet.
   const [sheet, setSheet] = useState<SheetState>("peek");
+  // Whether the time control is on screen. Someone who only ever wants
+  // tomorrow's sunrise has no use for a ten-day slider across the bottom of
+  // the map, and on a phone it is the largest single thing between them and
+  // the picture. Remembered per browser rather than per session: a preference
+  // that has to be set again every morning is not a preference. Read lazily
+  // rather than defaulted and corrected in an effect, which would be a
+  // scrubber that appears on first paint and then vanishes.
+  const [showTime, setShowTime] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return window.localStorage.getItem(TIME_KEY) !== "off";
+    } catch {
+      // Private mode. The default stands.
+      return true;
+    }
+  });
 
-  // Picking a spot - from a pin or from the list - brings its numbers up. From
-  // the collapsed state that means opening the sheet to the detail; from the
-  // full list it means leaving the list where it is, because someone reading
-  // down the ranking did not ask for it to close under them.
+  const changeShowTime = useCallback((value: boolean) => {
+    setShowTime(value);
+    try {
+      window.localStorage.setItem(TIME_KEY, value ? "on" : "off");
+    } catch {
+      // Not worth failing a click over.
+    }
+  }, []);
+
+  // Picking a spot - from a pin or from the list - brings its numbers up, and
+  // on a phone that means opening the sheet, which now leads with the detail
+  // rather than burying it under the ranking.
   const selectSpot = useCallback((id: string) => {
     setSelectedId(id);
-    setSheet((current) => (current === "peek" ? "detail" : current));
+    setSheet("open");
   }, []);
   const [layers, setLayers] = useState<LayerState>(DEFAULT_LAYERS);
   const [grid, setGrid] = useState<CloudGrid | null>(null);
@@ -193,6 +224,54 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
     };
   }, [observed, times]);
 
+  // Which satellite scan the observed layer is drawing, at the hour the page
+  // is describing. Worked out here rather than only inside the map because two
+  // things need it: the layer, and the legend that has to say how far off the
+  // hour that scan actually is.
+  const observedIndex = useMemo(() => {
+    if (!observed) return null;
+    if (shownMs === undefined) return null;
+    return nearestHourIndex(observed, shownMs);
+  }, [observed, shownMs]);
+
+  /**
+   * Which layer the altitude ramp is currently the key to, if either.
+   *
+   * The legend used to appear for the heatmap *or* the observed field, and
+   * since the observed field is on by default that meant a colour scale
+   * permanently on screen beside a white volumetric deck it explains nothing
+   * about. It belongs up only when a layer drawn from that ramp is actually
+   * being painted - which for the observed field means there is a scan within
+   * reach of the hour, not merely that its switch is on.
+   */
+  const legend = useMemo(() => {
+    if (layers.heatmap && grid !== null) {
+      return { variant: "forecast" as const };
+    }
+    if (layers.observed && observed !== null && observedIndex !== null) {
+      const scanMs = observed.timesMs[observedIndex];
+      return {
+        variant: "observed" as const,
+        scan: {
+          time: formatLocalTime(new Date(scanMs).toISOString(), locale),
+          // Signed: the nearest scan can land either side of the hour on
+          // screen, and "an hour before" and "an hour after" are different
+          // sentences about the same number.
+          gapHours: shownMs === undefined ? 0 : (scanMs - shownMs) / 3_600_000,
+        },
+      };
+    }
+    return null;
+  }, [
+    layers.heatmap,
+    layers.observed,
+    grid,
+    observed,
+    observedIndex,
+    shownMs,
+    locale,
+  ]);
+
   const visible: SpotEntry[] = useMemo(() => {
     if (!conditions) return [];
     return conditions.spots
@@ -254,7 +333,13 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
         that morning. In the flow, under the tabs, it lands below them however
         tall they are.
       */}
-      <LayerPanel layers={layers} onChange={setLayer} t={t} />
+      <LayerPanel
+        layers={layers}
+        onChange={setLayer}
+        t={t}
+        showTime={showTime}
+        onShowTimeChange={changeShowTime}
+      />
 
       <div className="stage">
         <MapView
@@ -269,6 +354,7 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
           time={hour === null ? undefined : times[hour]}
           hours={spotHours}
           atMs={shownMs}
+          observedIndex={shownMs === undefined ? undefined : observedIndex}
         />
       </div>
 
@@ -278,7 +364,7 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
         control inside it stops taking clicks the moment the cards scroll up
         over the map.
       */}
-      {hour !== null && (
+      {hour !== null && showTime && (
         <TimeScrubber
           times={times}
           index={hour}
@@ -287,14 +373,19 @@ export default function ConditionsView({ locale }: { locale: Locale }) {
           t={t}
           sunriseIndex={nearestIndex(times, nextSunrise(conditions.spots))}
           observedRange={observedRange}
+          onHide={() => changeShowTime(false)}
         />
       )}
 
-      {/* One legend, two layers: the observed field is drawn from the same
-          altitude ramp as the heatmap, so whichever of them is on, this is
-          the key to it. */}
-      {((layers.heatmap && grid !== null) ||
-        (layers.observed && observed !== null)) && <CloudTopLegend t={t} />}
+      {/* One ramp, two layers - so the legend has to name which of them it is
+          reading, and only come up when that layer is really on screen. */}
+      {legend && (
+        <CloudTopLegend
+          t={t}
+          variant={legend.variant}
+          scan={"scan" in legend ? legend.scan : undefined}
+        />
+      )}
 
       <Sidebar
         spots={visible}

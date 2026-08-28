@@ -13,7 +13,7 @@ import type { Locale, Translate, TranslationKey } from "@/lib/i18n";
 import { spotHourAt, type SpotHours } from "@/lib/spotHours";
 
 /**
- * The list of spots and the one that is selected, beside the map.
+ * The spot that is selected, and the ranking it came from, beside the map.
  *
  * This replaces the grid of cards the page used to end in. Two reasons it is a
  * sidebar and not a grid: a grid of eight equal cards says every spot is
@@ -22,10 +22,17 @@ import { spotHourAt, type SpotHours } from "@/lib/spotHours";
  * answer - into a band at the top of the screen. Here the map keeps the
  * viewport and the numbers sit next to it, for the spot in question.
  *
+ * The order inside it is the detail first and the ranking under it, and that
+ * ordering is the whole point rather than a layout preference. It was the
+ * other way round: tapping a pin selected a spot whose numbers were then eight
+ * rows further down the panel, so the answer to "tell me about this one"
+ * arrived below the fold of the thing you asked it from. The list is a way of
+ * choosing; the detail is what was chosen, and what was chosen goes first.
+ *
  * On a phone this is a bottom sheet over the map rather than a column beside
- * it, in one of three states. The markup is the same either way - only the
- * handle is phone-only, and CSS hides it on desktop - because a second
- * component for the same numbers is a second place for them to go wrong.
+ * it. The markup is the same either way - only the handle is phone-only, and
+ * CSS hides it on desktop - because a second component for the same numbers is
+ * a second place for them to go wrong.
  *
  * Why a sheet and not the stacked document it used to be: on a phone the map
  * was a band at the top and the list ran off the bottom, so reading a spot
@@ -34,23 +41,21 @@ import { spotHourAt, type SpotHours } from "@/lib/spotHours";
  * it.
  */
 
-/** How much of the sheet is showing. Phone-only; desktop ignores it. */
-export type SheetState = "peek" | "detail" | "full";
-
-/** Tapping the handle cycles forward, wrapping at the top. */
-const NEXT: Record<SheetState, SheetState> = {
-  peek: "detail",
-  detail: "full",
-  full: "peek",
-};
-
-/** The states in order, so a drag can step along them. */
-const ORDER: SheetState[] = ["peek", "detail", "full"];
+/**
+ * How much of the sheet is showing. Phone-only; desktop ignores it.
+ *
+ * Two states, not three. It was peek -> detail -> full, cycling, and a control
+ * whose one tap does a different thing each time is a control you have to
+ * remember rather than read: there was no way back a step, and no way to tell
+ * from the handle which of the three you were in. Open or closed is a thing
+ * a thumb can guess at 5am.
+ */
+export type SheetState = "peek" | "open";
 
 /**
  * How far a thumb has to travel before it counts as a drag rather than a tap.
  *
- * Below this the gesture falls through to the click handler, which cycles. A
+ * Below this the gesture falls through to the click handler, which toggles. A
  * tap on a phone always carries a few pixels of movement, and treating those
  * as a drag makes the handle feel like it is ignoring taps.
  */
@@ -98,7 +103,11 @@ export default function Sidebar({
   // first, and the one somebody opening this at 5am is asking about.
   const shown =
     spots.find((spot) => spot.id === selectedId) ?? spots[0] ?? null;
-  const listRef = useRef<HTMLOListElement | null>(null);
+  // Whichever element does the scrolling at this width: the column itself on
+  // desktop, the sheet body on a phone. Both are held because the CSS decides
+  // which one has the overflow, and this component is not told which.
+  const panelRef = useRef<HTMLElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
 
   // Looked up per spot rather than inside a row: the whole list is redrawn
   // while the scrubber is dragged.
@@ -114,29 +123,33 @@ export default function Sidebar({
   const dragFrom = useRef<{ y: number; sheet: SheetState } | null>(null);
   const dragged = useRef(false);
 
-  // Selecting a pin on the map has to move the list too, or the selected row
-  // is somewhere off-screen in a column of eight.
+  // Choosing a spot scrolls the panel back to the top, because the top is
+  // where that spot's numbers are.
+  //
+  // This used to scroll the *selected row* into view, which was the right move
+  // when the detail sat under the whole list and the row was the only thing
+  // worth looking at. With the detail first it is exactly backwards: someone
+  // who scrolled down to the ranking, picked something and got left staring at
+  // the ranking has been shown nothing, and the answer is off the top of the
+  // panel behind them.
   useEffect(() => {
-    if (!selectedId || !listRef.current) return;
-    const row = listRef.current.querySelector(`#row-${CSS.escape(selectedId)}`);
-    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (!selectedId) return;
+    for (const element of [panelRef.current, bodyRef.current]) {
+      element?.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, [selectedId]);
 
   if (!spots.length) return null;
 
   const shownScore = shown ? headlineScore(shown) : null;
 
-  const step = (from: SheetState, by: number): SheetState => {
-    const index = ORDER.indexOf(from) + by;
-    return ORDER[Math.max(0, Math.min(ORDER.length - 1, index))];
-  };
-
   return (
     <aside
+      ref={panelRef}
       className="sidebar"
       aria-label={t("sidebar.title")}
       // The state the CSS reads. It is an attribute rather than a class so the
-      // three positions stay one axis - a stray "sheet-full" left on alongside
+      // two positions stay one axis - a stray "sheet-open" left on alongside
       // "sheet-peek" is a bug that cannot be written this way.
       data-sheet={sheet}
     >
@@ -146,12 +159,12 @@ export default function Sidebar({
       <button
         type="button"
         className="sheet-handle"
-        aria-expanded={sheet !== "peek"}
+        aria-expanded={sheet === "open"}
         aria-controls="sheet-body"
-        // Up opens, down closes, one step per drag. A tap - anything under the
-        // threshold - falls through to onClick and cycles instead, which is
-        // also the whole keyboard story: the handle is a button and Enter
-        // works on it.
+        aria-label={t(sheet === "open" ? "sheet.close" : "sheet.open")}
+        // Up opens, down closes. A tap - anything under the threshold - falls
+        // through to onClick and toggles instead, which is also the whole
+        // keyboard story: the handle is a button and Enter works on it.
         onPointerDown={(event) => {
           dragFrom.current = { y: event.clientY, sheet };
           dragged.current = false;
@@ -163,7 +176,7 @@ export default function Sidebar({
           const travelled = from.y - event.clientY;
           if (Math.abs(travelled) < DRAG_THRESHOLD_PX) return;
           dragged.current = true;
-          const next = step(from.sheet, travelled > 0 ? 1 : -1);
+          const next: SheetState = travelled > 0 ? "open" : "peek";
           if (next !== sheet) onSheetChange(next);
         }}
         onPointerUp={() => {
@@ -179,7 +192,7 @@ export default function Sidebar({
             dragged.current = false;
             return;
           }
-          onSheetChange(NEXT[sheet]);
+          onSheetChange(sheet === "open" ? "peek" : "open");
         }}
       >
         <span className="sheet-grip" aria-hidden="true" />
@@ -204,52 +217,8 @@ export default function Sidebar({
         </span>
       </button>
 
-      <div className="sheet-body" id="sheet-body">
-        <ol className="spot-list" ref={listRef}>
-          {spots.map((spot) => {
-            const score = headlineScore(spot);
-            const day = spot.days[0];
-            const at = hourFor(spot);
-            const verdict =
-              spot.type === "viewpoint" && day && isViewpointDay(day)
-                ? ((at &&
-                    hourVerdict(at, spot.elevation_m, spot.fog_is_the_view)) ??
-                  deckVerdict(day, spot.elevation_m, spot.fog_is_the_view))
-                : null;
-            const selected = spot.id === shown?.id;
-            return (
-              <li key={spot.id}>
-                <button
-                  type="button"
-                  id={`row-${spot.id}`}
-                  className={selected ? "spot-row selected" : "spot-row"}
-                  aria-current={selected ? "true" : undefined}
-                  onClick={() => onSelect(spot.id)}
-                >
-                  <span
-                    className={`spot-score score-${scoreClass(
-                      score ? score.value : null,
-                    )}`}
-                    aria-hidden="true"
-                  >
-                    {score ? Math.round(score.value) : "?"}
-                  </span>
-                  <span className="spot-label">
-                    <span className="spot-name">
-                      {locale === "pt" ? spot.name.pt : spot.name.en}
-                    </span>
-                    <span className="spot-sub">
-                      {verdict
-                        ? t(`verdict.${verdict}` as TranslationKey)
-                        : `${spot.elevation_m.toFixed(0)} m`}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-
+      <div className="sheet-body" id="sheet-body" ref={bodyRef}>
+        {/* The answer, first. */}
         {shown && (
           <SpotDetail
             spot={shown}
@@ -259,7 +228,71 @@ export default function Sidebar({
           />
         )}
 
-        {legal}
+        {/* And the ranking it came out of, under it, behind a heading that
+            says what it is. Without the heading the two blocks read as one
+            long panel and the numbers at the top look like the first row's. */}
+        <section className="spot-picker">
+          <h2 className="panel-heading">
+            {t("sidebar.title")}
+            <span className="muted">{t("sidebar.count", { n: spots.length })}</span>
+          </h2>
+
+          <ol className="spot-list">
+            {spots.map((spot) => {
+              const score = headlineScore(spot);
+              const day = spot.days[0];
+              const at = hourFor(spot);
+              const verdict =
+                spot.type === "viewpoint" && day && isViewpointDay(day)
+                  ? ((at &&
+                      hourVerdict(at, spot.elevation_m, spot.fog_is_the_view)) ??
+                    deckVerdict(day, spot.elevation_m, spot.fog_is_the_view))
+                  : null;
+              const selected = spot.id === shown?.id;
+              return (
+                <li key={spot.id}>
+                  <button
+                    type="button"
+                    id={`row-${spot.id}`}
+                    className={selected ? "spot-row selected" : "spot-row"}
+                    aria-current={selected ? "true" : undefined}
+                    onClick={() => onSelect(spot.id)}
+                  >
+                    <span
+                      className={`spot-score score-${scoreClass(
+                        score ? score.value : null,
+                      )}`}
+                      aria-hidden="true"
+                    >
+                      {score ? Math.round(score.value) : "?"}
+                    </span>
+                    <span className="spot-label">
+                      <span className="spot-name">
+                        {locale === "pt" ? spot.name.pt : spot.name.en}
+                      </span>
+                      <span className="spot-sub">
+                        {verdict
+                          ? t(`verdict.${verdict}` as TranslationKey)
+                          : `${spot.elevation_m.toFixed(0)} m`}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+
+        {/* Folded away rather than removed. It is a licence condition and a
+            safety notice, so it cannot go; it is also six lines of small print
+            that used to sit at the end of every scroll, between the reader and
+            nothing at all. Closed by default, one tap from open. */}
+        {legal && (
+          <details className="legal">
+            <summary>{t("sidebar.legal")}</summary>
+            {legal}
+          </details>
+        )}
       </div>
     </aside>
   );

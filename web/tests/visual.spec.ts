@@ -132,10 +132,9 @@ test("375px lays out in one column with nothing off-screen", async ({
   await withFixture(page);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/en");
-  // The sheet opens collapsed, so the list is not on screen until it is asked
-  // for: peek -> detail -> full, one tap each.
+  // The sheet opens collapsed, so nothing inside it is on screen until it is
+  // asked for. One tap on the handle, and the whole panel is up.
   const handle = page.locator(".sheet-handle");
-  await handle.click();
   await handle.click();
   await page.locator("#row-pico-arieiro").click();
   await page.waitForSelector("#spot-pico-arieiro");
@@ -173,7 +172,6 @@ test("375px lays out in one column with nothing off-screen", async ({
   // most of the screen and the tabs are above it.
   await handle.click();
   await page.getByRole("tab", { name: "Beaches" }).click();
-  await handle.click();
   await handle.click();
   await page.locator("#row-porto-santo-beach").click();
   await page.waitForSelector("#spot-porto-santo-beach");
@@ -233,22 +231,44 @@ test("the phone keeps the map and brings the numbers up over it", async ({
   await atState("peek");
   await expect(page.locator(".spot-list")).toBeHidden();
 
-  // Tapping a pin asks about that spot, and the sheet answers with it rather
-  // than with the ranking.
+  // Tapping a pin asks about that spot, and the sheet answers with it: open,
+  // with that spot's numbers as the first thing in the panel rather than eight
+  // rows of ranking further down it.
   //
   // By name, and only once the pins are up: the marker layer rebuilds its
   // elements when the map finishes loading, and a click racing that rebuild
   // lands on a button that has already been replaced.
   await page.waitForSelector(".map-pin");
   await page.getByRole("button", { name: /Pico Ruivo/ }).click();
-  await atState("detail");
+  await atState("open");
   await expect(page.locator(".spot-detail h3")).toHaveText("Pico Ruivo");
-  await expect(page.locator(".spot-list")).toBeHidden();
 
-  // And the list is one tap further on.
-  await page.locator(".sheet-handle").click();
-  await atState("full");
+  // First in the panel, and on screen without scrolling for it: this is the
+  // whole complaint the ordering was changed to answer.
+  const placed = await page.evaluate(() => {
+    const body = document.querySelector(".sheet-body")!;
+    const detail = document.querySelector(".spot-detail")!;
+    return {
+      firstChild: body.firstElementChild?.className,
+      scrolled: body.scrollTop,
+      visible:
+        detail.getBoundingClientRect().top <
+        body.getBoundingClientRect().bottom,
+    };
+  });
+  expect(placed.firstChild).toContain("spot-detail");
+  expect(placed.scrolled).toBe(0);
+  expect(placed.visible).toBe(true);
+
+  // The ranking is under it, in the same open panel - not one more tap away
+  // through a state nothing on screen names.
   await expect(page.locator(".spot-list")).toBeVisible();
+
+  // And the handle puts the whole thing away again. One control, two states,
+  // and a tap that always does the opposite of what is on screen.
+  await page.locator(".sheet-handle").click();
+  await atState("peek");
+  await expect(page.locator(".spot-list")).toBeHidden();
 
   // Nothing about any of this scrolls the page out from under the map.
   const overflow = await page.evaluate(() => ({

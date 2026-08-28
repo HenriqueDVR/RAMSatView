@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  AttributionControl,
   type ErrorEvent as MapErrorEvent,
   Map as MapLibreMap,
   Marker,
@@ -206,6 +207,7 @@ export default function MapView({
   time,
   hours = null,
   atMs,
+  observedIndex: observedIndexProp,
 }: {
   spots: SpotEntry[];
   locale: Locale;
@@ -229,6 +231,13 @@ export default function MapView({
   /** The per-spot hourly series and the instant on it, for the callout. */
   hours?: SpotHours | null;
   atMs?: number;
+  /**
+   * Which observed scan to draw, worked out by the page so that the layer and
+   * the legend explaining it can never name different scans. `undefined` means
+   * nobody has decided yet and the map should work it out from `time`, which
+   * is the state it is in before the volume lands.
+   */
+  observedIndex?: number | null;
   /**
    * The instant the scene is lit for. Defaults to the sunrise the forecast is
    * about, because that is the moment the whole product describes - not
@@ -297,7 +306,11 @@ export default function MapView({
         [VIEW_BOUNDS[0], VIEW_BOUNDS[1]],
         [VIEW_BOUNDS[2], VIEW_BOUNDS[3]],
       ],
-      attributionControl: { compact: true },
+      // Added by hand below rather than here, so it can be put somewhere.
+      // MapLibre's own option always lands bottom-right, which on this page is
+      // where the time control is pinned - the credit ended up floating a
+      // hundred pixels up the screen beside the slider, in no corner at all.
+      attributionControl: false,
     });
     // The masthead and the panels sit over the top of the map, so the
     // projection centre is pushed down to match. Without this the horizon -
@@ -312,6 +325,14 @@ export default function MapView({
     (window as unknown as { __satappMap?: MapLibreMap }).__satappMap = instance;
     instance.addControl(
       new NavigationControl({ visualizePitch: true }),
+      "top-right",
+    );
+    // Under the zoom and compass buttons, in the one corner nothing else on
+    // this page claims at any width. It is a licence condition - EOX's imagery
+    // is CC BY-NC-SA - so it has to be on screen always, and "always" means it
+    // cannot live where the scrubber or the phone's sheet will land on it.
+    instance.addControl(
+      new AttributionControl({ compact: true }),
       "top-right",
     );
 
@@ -413,9 +434,10 @@ export default function MapView({
   // how last night's satellite ends up captioned as tomorrow morning.
   const observedIndex = useMemo(() => {
     if (!observed) return null;
+    if (observedIndexProp !== undefined) return observedIndexProp;
     const instant = (time ?? defaultTime(spots)).getTime();
     return nearestHourIndex(observed, instant);
-  }, [observed, time, spots]);
+  }, [observed, observedIndexProp, time, spots]);
 
   useEffect(() => {
     const instance = map.current;
